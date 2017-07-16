@@ -1,7 +1,8 @@
 # TODO refactor to class
-from Robinhood import Robinhood
 import pandas as pd
+from Robinhood import Robinhood
 from auth import user, password
+from functools import reduce
 
 
 # auxiliary for getting all orders
@@ -21,6 +22,7 @@ def get_positions(rb):
     positions = [x for x in positions['results']]
     df = pd.DataFrame(positions)
     df['symbol'] = df['instrument'].apply(rb.get_symbol_by_instrument)
+    df['name'] = df['instrument'].apply(rb.get_name_by_instrument)
     df['last_trade_price'] = df['symbol'].apply(rb.last_trade_price)
     return df
 
@@ -35,12 +37,16 @@ def process_positions(df):
         df[field] = pd.to_datetime(df[field])
 
     # process positions
-    df['balance'] =\
+    df['absGain'] =\
         (df['last_trade_price'] - df['average_buy_price']) *\
         df['quantity']
-    df['subtotal'] = df['last_trade_price'] * df['quantity']
-    df['ratio'] = df['subtotal'] / df['subtotal'].sum()
-    df['return'] = df['balance'] / df['subtotal']
+    df['value'] = df['last_trade_price'] * df['quantity']
+    df['pctTotal'] = df['value'] / df['value'].sum()
+    df['relGain'] = df['absGain'] / df['value']
+
+    # get asset type
+    # TODO plug for testing
+    df.loc[:, 'asset_type'] = 'ETF'
     return df
 
 
@@ -54,14 +60,36 @@ def get_orders(rb):
         orders.extend(past_orders['results'])
     df = pd.DataFrame(orders)
     df['symbol'] = df['instrument'].apply(rb.get_symbol_by_instrument)
+    df['last_trade_price'] = df['symbol'].apply(rb.last_trade_price)
     return df
 
 
 def process_orders(df):
-    for field in ['average_price', 'price', 'stop_price', 'quantity']:
+    for field in [
+        'average_price', 'price', 'stop_price', 'quantity',
+        'cumulative_quantity', 'fees'
+    ]:
         df[field] = pd.to_numeric(df[field])
     for field in ['created_at', 'updated_at']:
         df[field] = pd.to_datetime(df[field])
+    df.sort_values(by='created_at', inplace=True)
+    # for field in df.columns:
+    #     if df[field].dtype == 'O':
+    #         print(field)
+    #         df[field] = df[field].astype('|S')
+    return df
+
+
+def get_history_for_symbols(rb, symbols):
+    dfs = []
+    for s in symbols:
+        res = rb.get_historical_quotes(s, 'week', '5year')
+        df = pd.DataFrame(res['results'][0]['historicals'])
+        df.columns =\
+            ['_'.join([s, c]) if c != 'begins_at' else c for c in df.columns]
+        dfs.append(df)
+    df = reduce((lambda x, y: pd.merge(x, y, on='begins_at', how='left')), dfs)
+    df['begins_at'] = pd.to_datetime(df['begins_at'])
     return df
 
 
@@ -89,20 +117,24 @@ if __name__ == "__main__":
         df_pos = process_positions(get_positions(rb))
         df_ord = process_orders(get_orders(rb))
         df_div = process_dividends(get_dividends(rb))
+        df_prc = get_history_for_symbols(rb, df_ord['symbol'].unique())
 
         df_pos.to_hdf('../data/data.h5', 'positions')
         df_ord.to_hdf('../data/data.h5', 'orders')
         df_div.to_hdf('../data/data.h5', 'dividends')
+        df_prc.to_hdf('../data/data.h5', 'prices')
 
     if case == 'read':
         df_div = pd.read_hdf('../data/data.h5', 'dividends')
         df_pos = pd.read_hdf('../data/data.h5', 'positions')
         df_ord = pd.read_hdf('../data/data.h5', 'orders')
+        df_prc = pd.read_hdf('../data/data.h5', 'prices')
 
     if case == 'update':
         df_div = process_dividends(pd.read_hdf('../data/data.h5', 'dividends'))
         df_pos = process_positions(pd.read_hdf('../data/data.h5', 'positions'))
         df_ord = process_orders(pd.read_hdf('../data/data.h5', 'orders'))
+        df_prc = pd.read_hdf('../data/data.h5', 'prices')
 
         df_pos.to_hdf('../data/data.h5', 'positions')
         df_ord.to_hdf('../data/data.h5', 'orders')

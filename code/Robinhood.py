@@ -7,27 +7,27 @@ class Robinhood:
     endpoints = {
         "login": "https://api.robinhood.com/api-token-auth/",
         "investment_profile": "https://api.robinhood.com/user/investment_profile/",
-        "accounts":"https://api.robinhood.com/accounts/",
-        "ach_iav_auth":"https://api.robinhood.com/ach/iav/auth/",
-        "ach_relationships":"https://api.robinhood.com/ach/relationships/",
-        "ach_transfers":"https://api.robinhood.com/ach/transfers/",
-        "applications":"https://api.robinhood.com/applications/",
-        "dividends":"https://api.robinhood.com/dividends/",
-        "edocuments":"https://api.robinhood.com/documents/",
-        "instruments":"https://api.robinhood.com/instruments/",
-        "margin_upgrades":"https://api.robinhood.com/margin/upgrades/",
-        "markets":"https://api.robinhood.com/markets/",
-        "notifications":"https://api.robinhood.com/notifications/",
-        "orders":"https://api.robinhood.com/orders/",
-        "password_reset":"https://api.robinhood.com/password_reset/request/",
-        "portfolios":"https://api.robinhood.com/portfolios/",
-        "positions":"https://api.robinhood.com/positions/",
-        "quotes":"https://api.robinhood.com/quotes/",
-        "historicals":"https://api.robinhood.com/quotes/historicals/",
-        "document_requests":"https://api.robinhood.com/upload/document_requests/",
-        "user":"https://api.robinhood.com/user/",
-        "watchlists":"https://api.robinhood.com/watchlists/",
-        "news":"https://api.robinhood.com/midlands/news/"
+        "accounts": "https://api.robinhood.com/accounts/",
+        "ach_iav_auth": "https://api.robinhood.com/ach/iav/auth/",
+        "ach_relationships": "https://api.robinhood.com/ach/relationships/",
+        "ach_transfers": "https://api.robinhood.com/ach/transfers/",
+        "applications": "https://api.robinhood.com/applications/",
+        "dividends": "https://api.robinhood.com/dividends/",
+        "edocuments": "https://api.robinhood.com/documents/",
+        "instruments": "https://api.robinhood.com/instruments/",
+        "margin_upgrades": "https://api.robinhood.com/margin/upgrades/",
+        "markets": "https://api.robinhood.com/markets/",
+        "notifications": "https://api.robinhood.com/notifications/",
+        "orders": "https://api.robinhood.com/orders/",
+        "password_reset": "https://api.robinhood.com/password_reset/request/",
+        "portfolios": "https://api.robinhood.com/portfolios/",
+        "positions": "https://api.robinhood.com/positions/",
+        "quotes": "https://api.robinhood.com/quotes/",
+        "historicals": "https://api.robinhood.com/quotes/historicals/",
+        "document_requests": "https://api.robinhood.com/upload/document_requests/",
+        "user": "https://api.robinhood.com/user/",
+        "watchlists": "https://api.robinhood.com/watchlists/",
+        "news": "https://api.robinhood.com/midlands/news/"
     }
 
     session = None
@@ -78,32 +78,33 @@ class Robinhood:
         return True
 
     ##############################
-    #GET DATA 
+    # GET DATA 
     ##############################
 
     def investment_profile(self):
         self.session.get(self.endpoints['investment_profile'])
 
     def instruments(self, stock=None):
-        res = self.session.get(self.endpoints['instruments'],\
-            params={'query':stock.upper()})
+        res = self.session.get(
+            self.endpoints['instruments'],
+            params={'query': stock.upper()})
         res = res.json()
         return res['results']
 
     def quote_data(self, stock=None):
-        #Prompt for stock if not entered
+        # Prompt for stock if not entered
         if stock is None:
-            stock = raw_input("Symbol: ");
+            stock = raw_input("Symbol: ")
         url = str(self.endpoints['quotes']) + str(stock) + "/"
-        #Check for validity of symbol
+        # Check for validity of symbol
         try:
             res = requests.get(url).json()
             if len(res) > 0:
-                return res;
+                return res
             else:
-                raise NameError("Invalid Symbol: " + stock);
+                raise NameError("Invalid Symbol: " + stock)
         except (ValueError):
-            raise NameError("Invalid Symbol: " + stock);
+            raise NameError("Invalid Symbol: " + stock)
 
     def get_quote(self, stock=None):
         data = self.quote_data(stock)
