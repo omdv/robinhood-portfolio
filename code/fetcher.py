@@ -1,8 +1,28 @@
 # TODO refactor to class
 import pandas as pd
+import numpy as np
+from pandas_datareader import data
 from Robinhood import Robinhood
 from auth import user, password
 from functools import reduce
+
+
+# download market benchmark data
+class marketData:
+    def __init__(self):
+        return None
+
+    # startDate, endDate in yyyymmdd format
+    def get_market_index(self, start_date, end_date):
+        url = "https://stooq.com/q/d/l/?s={}&d1={}&d2={}&i=d"
+        url = url.format("^dji", start_date, end_date)
+        df = pd.read_csv(self.url)
+        return df
+
+    # returns panel
+    def get_historical_prices(self, tickers, start_date, end_date):
+        panel_data = data.DataReader(tickers, "google", start_date, end_date)
+        return panel_data
 
 
 # auxiliary for getting all orders
@@ -23,7 +43,9 @@ def get_positions(rb):
     df = pd.DataFrame(positions)
     df['symbol'] = df['instrument'].apply(rb.get_symbol_by_instrument)
     df['name'] = df['instrument'].apply(rb.get_name_by_instrument)
+    # TODO last_trade_price is probably redundant
     df['last_trade_price'] = df['symbol'].apply(rb.last_trade_price)
+    del df['account']
     return df
 
 
@@ -61,34 +83,69 @@ def get_orders(rb):
     df = pd.DataFrame(orders)
     df['symbol'] = df['instrument'].apply(rb.get_symbol_by_instrument)
     df['last_trade_price'] = df['symbol'].apply(rb.last_trade_price)
+    df.sort_values(by='created_at', inplace=True)
+    df.reset_index(inplace=True, drop=True)
+
+    # privacy
+    del df['account']
     return df
 
 
 def process_orders(df):
-    for field in [
-        'average_price', 'price', 'stop_price', 'quantity',
-        'cumulative_quantity', 'fees'
-    ]:
+    # convert types
+    for field in ['average_price', 'price', 'stop_price', 'quantity',
+                  'cumulative_quantity', 'fees']:
         df[field] = pd.to_numeric(df[field])
     for field in ['created_at', 'updated_at']:
         df[field] = pd.to_datetime(df[field])
-    df.sort_values(by='created_at', inplace=True)
-    # for field in df.columns:
-    #     if df[field].dtype == 'O':
-    #         print(field)
-    #         df[field] = df[field].astype('|S')
+
+    # quantity accounting for side of transaction
+    df['signed_quantity'] = np.where(
+        df.side == 'buy',
+        df['cumulative_quantity'],
+        -df['cumulative_quantity'])
+
+    # calculate cost_basis at the moment of the order
+    df['cost_basis'] = df['signed_quantity'] * df['average_price']
+
+    # cumsum by symbol
+    df['cum_quantity_symbol'] = df.groupby('symbol').signed_quantity.cumsum()
     return df
+
+
+# def get_history_for_symbols_1(rb, symbols):
+#     dfs = []
+#     for s in symbols:
+#         res = rb.get_historical_quotes(s, 'week', '5year')
+#         df = pd.DataFrame(res['results'][0]['historicals'])
+
+#         df = df[['begins_at', 'volume', 'open_price', 'close_price']]
+#         for c in ['volume', 'open_price', 'close_price']:
+#             df[c] = pd.to_numeric(df[c], errors='coerce')
+
+#         df.columns =\
+#             ['_'.join([s, c]) if c != 'begins_at' else c for c in df.columns]
+#         df[s] = (df[s + "_close_price"] + df[s + "_open_price"]) / 2
+#         dfs.append(df)
+
+#     df = reduce((lambda x, y: pd.merge(x, y, on='begins_at', how='left')), dfs)
+#     df['begins_at'] = pd.to_datetime(df['begins_at'])
+#     return df
 
 
 def get_history_for_symbols(rb, symbols):
     dfs = []
+    ncols = ['volume', 'open_price', 'close_price', 'high_price', 'low_price']
     for s in symbols:
         res = rb.get_historical_quotes(s, 'week', '5year')
         df = pd.DataFrame(res['results'][0]['historicals'])
-        df.columns =\
-            ['_'.join([s, c]) if c != 'begins_at' else c for c in df.columns]
+        for c in ncols:
+            df[c] = pd.to_numeric(df[c], errors='coerce')
+        df['symbol'] = s
+        df['price'] = (df["close_price"] + df["open_price"]) / 2
         dfs.append(df)
-    df = reduce((lambda x, y: pd.merge(x, y, on='begins_at', how='left')), dfs)
+
+    df = reduce((lambda x, y: pd.concat([x, y], axis=0)), dfs)
     df['begins_at'] = pd.to_datetime(df['begins_at'])
     return df
 
@@ -98,6 +155,7 @@ def get_dividends(rb):
     dividends = [x for x in dividends['results']]
     df = pd.DataFrame(dividends)
     df['symbol'] = df['instrument'].apply(rb.get_symbol_by_instrument)
+    del df['account']
     return df
 
 
@@ -106,6 +164,14 @@ def process_dividends(df):
         df[field] = pd.to_numeric(df[field])
     for field in ['record_date', 'payable_date', 'paid_at']:
         df[field] = pd.to_datetime(df[field])
+    return df
+
+
+# merging orders and prices
+def process_portfolio(df_ord, df_prc):
+    df = pd.merge_asof(
+        df_ord, df_prc[['begins_at']],
+        left_on='created_at', right_on='begins_at')
     return df
 
 
@@ -135,6 +201,8 @@ if __name__ == "__main__":
         df_pos = process_positions(pd.read_hdf('../data/data.h5', 'positions'))
         df_ord = process_orders(pd.read_hdf('../data/data.h5', 'orders'))
         df_prc = pd.read_hdf('../data/data.h5', 'prices')
+
+        # df_ptf = process_portfolio(df_ord, df_prc)
 
         df_pos.to_hdf('../data/data.h5', 'positions')
         df_ord.to_hdf('../data/data.h5', 'orders')

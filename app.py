@@ -36,6 +36,16 @@ def orders():
     return Response(orders, mimetype='application/json')
 
 
+# prices API
+@app.route('/prices/')
+def prices():
+    df_prc = pd.read_hdf('data/data.h5', 'prices')
+    df_prc['begins_at'] =\
+        df_prc['begins_at'].apply(lambda x: x.strftime('%d/%m/%Y'))
+    prices = df_prc.to_json(orient='records')
+    return Response(prices, mimetype='application/json')
+
+
 if __name__ == '__main__':
     PORT = int(os.getenv('PORT', 8080))
     HOST = os.getenv('HOST', '0.0.0.0')
