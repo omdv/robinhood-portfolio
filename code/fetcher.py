@@ -1,28 +1,46 @@
-# TODO refactor to class
 import pandas as pd
 import numpy as np
-from pandas_datareader import data
-from Robinhood import Robinhood
+from robinhood_api import RobinhoodAPI
+from market_data import MarketData
 from auth import user, password
 from functools import reduce
 
 
-# download market benchmark data
-class marketData:
+# calculating portfolio performance
+class PortfolioPerformance():
+    def __init__(self, risk_free):
+        self.risk_free = risk_free
+        return None
+
+    # beta for a provided panel, index value should be last column
+    def beta_by_covar(self, pf):
+        betas = dict()
+        # dates = pd.to_datetime([start_date, end_date])
+        pf.ix['Daily_change'] = (pf.ix['Close'] - pf.ix['Close'].shift(1))\
+            / pf.ix['Close'].shift(1) * 100
+        covar = np.cov(pf.ix['Daily_change'][1:], rowvar=False, ddof=0)
+        variance = np.var(pf.ix['Daily_change'])['market']
+        for i, j in enumerate(pf.ix['Daily_change'].columns):
+            betas[j] = covar[-1, i] / variance
+        return betas
+
+    # beta for a provided panel based on simple return
+    def beta_by_return(self, pf):
+        return None
+
+    # alpha by capm model
+    def alpha_by_capm():
+        return None
+
+
+class RobinhoodData:
     def __init__(self):
         return None
 
-    # startDate, endDate in yyyymmdd format
-    def get_market_index(self, start_date, end_date):
-        url = "https://stooq.com/q/d/l/?s={}&d1={}&d2={}&i=d"
-        url = url.format("^dji", start_date, end_date)
-        df = pd.read_csv(self.url)
-        return df
-
-    # returns panel
-    def get_historical_prices(self, tickers, start_date, end_date):
-        panel_data = data.DataReader(tickers, "google", start_date, end_date)
-        return panel_data
+    def login(self):
+        self.client = RobinhoodAPI()
+        self.client.login(username=user, password=password)
+        return self
 
 
 # auxiliary for getting all orders
@@ -32,7 +50,7 @@ def fetch_json_by_url(rb_client, url):
 
 # Setup and login
 def login():
-    rb = Robinhood()
+    rb = RobinhoodAPI()
     rb.login(username=user, password=password)
     return rb
 
@@ -207,3 +225,6 @@ if __name__ == "__main__":
         df_pos.to_hdf('../data/data.h5', 'positions')
         df_ord.to_hdf('../data/data.h5', 'orders')
         df_div.to_hdf('../data/data.h5', 'dividends')
+
+    # read panel
+    pf = pd.read_hdf('../data/data.h5', 'panel')

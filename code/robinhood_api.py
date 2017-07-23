@@ -2,7 +2,7 @@ import getpass
 import json
 import requests
 
-class Robinhood:
+class RobinhoodAPI:
 
     endpoints = {
         "login": "https://api.robinhood.com/api-token-auth/",
