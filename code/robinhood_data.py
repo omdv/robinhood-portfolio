@@ -1,19 +1,141 @@
 import pandas as pd
 import numpy as np
 from robinhood_api import RobinhoodAPI
-from market_data import MarketData
 from auth import user, password
 from functools import reduce
 
 
 class RobinhoodData:
-    def __init__(self):
-        return None
+    def __init__(self, datafile):
+        self.datafile = '../data/data.h5'
 
-    def login(self):
+    def _login(self):
         self.client = RobinhoodAPI()
         self.client.login(username=user, password=password)
         return self
+
+    # private method for getting all orders
+    def _fetch_json_by_url(self, url):
+        return self.client.session.get(url).json()
+
+    # deleting sensitive or redundant fields
+    def _delete_sensitive_fields(self, df):
+        for col in ['account', 'url', 'id', 'instrument']:
+            if col in df:
+                del df[col]
+        return df
+
+    # download positions and all fields requiring RB client
+    def _download_positions(self):
+        positions = self.client.positions()
+        positions = [x for x in positions['results']]
+        df = pd.DataFrame(positions)
+        df['symbol'] = df['instrument'].apply(
+            self.client.get_symbol_by_instrument)
+        df['name'] = df['instrument'].apply(
+            self.client.get_name_by_instrument)
+        self.df_pos = self._delete_sensitive_fields(df)
+        return self
+
+    # download orders and fields requiring RB client
+    def _download_orders(self):
+        orders = []
+        past_orders = self.client.order_history()
+        orders.extend(past_orders['results'])
+        while past_orders['next']:
+            next_url = past_orders['next']
+            past_orders = self._fetch_json_by_url(next_url)
+            orders.extend(past_orders['results'])
+        df = pd.DataFrame(orders)
+        df['symbol'] = df['instrument'].apply(
+            self.client.get_symbol_by_instrument)
+        df.sort_values(by='created_at', inplace=True)
+        df.reset_index(inplace=True, drop=True)
+        self.df_ord = self._delete_sensitive_fields(df)
+        return self
+
+    # download dividends and fields requiring RB client
+    def _download_dividends(self):
+        dividends = self.client.dividends()
+        dividends = [x for x in dividends['results']]
+        df = pd.DataFrame(dividends)
+        df['symbol'] = df['instrument'].apply(
+            self.client.get_symbol_by_instrument)
+        df.sort_values(by='paid_at', inplace=True)
+        df.reset_index(inplace=True, drop=True)
+        self.df_div = self._delete_sensitive_fields(df)
+        return self
+
+    # process orders
+    def _process_orders(self):
+        # assign to df and reduce the number of fields
+        df = self.df_ord.copy()
+        fields = [
+            'created_at',
+            'average_price', 'price', 'cumulative_quantity', 'fees',
+            'symbol', 'side']
+        df = df[fields]
+
+        # convert types
+        for field in ['average_price', 'price',
+                      'cumulative_quantity', 'fees']:
+            df[field] = pd.to_numeric(df[field])
+        for field in ['created_at']:
+            df[field] = pd.to_datetime(df[field])
+
+        # add days
+        df['date'] = df['created_at'].apply(
+            lambda x: pd.tslib.normalize_date(x))
+
+        # quantity accounting for side of transaction
+        df['signed_quantity'] = np.where(
+            df.side == 'buy',
+            df['cumulative_quantity'],
+            -df['cumulative_quantity'])
+
+        # calculate cost_basis at the moment of the order
+        df['cost_basis'] = df['signed_quantity'] * df['average_price']
+
+        # group by days
+        df = df.groupby(['date', 'symbol'], as_index=False).sum()
+
+        # cumsum by symbol
+        df['total_quantity'] = df.groupby('symbol').signed_quantity.cumsum()
+        df['total_cost_basis'] = df.groupby('symbol').cost_basis.cumsum()
+        self.df_ord = df
+
+    # process_orders
+    def _process_dividends(self):
+        df = self.df_div.copy()
+        fields = [
+            'paid_at',
+            'amount',
+            'symbol']
+        df = df[fields]
+
+        # convert types
+        for field in ['amount']:
+            df[field] = pd.to_numeric(df[field])
+        for field in ['paid_at']:
+            df[field] = pd.to_datetime(df[field])
+
+        # add days
+        df['date'] = df['paid_at'].apply(
+            lambda x: pd.tslib.normalize_date(x))
+
+        # cumsum by symbol
+        df['total_amount'] = df.groupby('symbol').amount.cumsum()
+        self.df_div = df
+
+    def download_robinhood_data(self):
+        self._login()
+
+        self._download_dividends()._process_dividends()
+        self._download_orders()._process_orders()
+
+        self.df_div.to_hdf(self.datafile, 'dividends')
+        self.df_ord.to_hdf(self.datafile, 'orders')
+        return (self.df_div, self.df_ord)
 
 
 # auxiliary for getting all orders
@@ -143,6 +265,14 @@ def process_dividends(df):
         df[field] = pd.to_numeric(df[field])
     for field in ['record_date', 'payable_date', 'paid_at']:
         df[field] = pd.to_datetime(df[field])
+
+    # add days
+    df['date'] = df['paid_at'].apply(
+        lambda x: pd.tslib.normalize_date(x))
+    df.sort_values(by='date', inplace=True)
+
+    # cumsum by symbol
+    df['total_amount'] = df.groupby('symbol').amount.cumsum()
     return df
 
 
@@ -154,50 +284,10 @@ def process_portfolio(df_ord, df_prc):
     return df
 
 
-if __name__ == "__main__":
-    case = 'read'
-
-    if case == 'download':
-        rb = login()
-        df_pos = process_positions(get_positions(rb))
-        df_ord = process_orders(get_orders(rb))
-        df_div = process_dividends(get_dividends(rb))
-        df_prc = get_history_for_symbols(rb, df_ord['symbol'].unique())
-
-        df_pos.to_hdf('../data/data.h5', 'positions')
-        df_ord.to_hdf('../data/data.h5', 'orders')
-        df_div.to_hdf('../data/data.h5', 'dividends')
-        df_prc.to_hdf('../data/data.h5', 'prices')
-
-        # mb = MarketData()
-        # pf = mb.get_data(
-        #     df_ord.symbol.unique(),
-        #     df_ord.date.min().strftime("%Y%m%d"),
-        #     df_ord.date.max().strftime("%Y%m%d"))
-        # pf.to_hdf('../data/data.h5', 'panel')
-
-    if case == 'read':
-        df_div = pd.read_hdf('../data/data.h5', 'dividends')
-        df_pos = pd.read_hdf('../data/data.h5', 'positions')
-        df_ord = pd.read_hdf('../data/data.h5', 'orders')
-        df_prc = pd.read_hdf('../data/data.h5', 'prices')
-
-    if case == 'update':
-        df_div = process_dividends(pd.read_hdf('../data/data.h5', 'dividends'))
-        df_pos = process_positions(pd.read_hdf('../data/data.h5', 'positions'))
-        df_ord = process_orders(pd.read_hdf('../data/data.h5', 'orders'))
-        df_prc = pd.read_hdf('../data/data.h5', 'prices')
-
-        # df_ptf = process_portfolio(df_ord, df_prc)
-
-        df_pos.to_hdf('../data/data.h5', 'positions')
-        df_ord.to_hdf('../data/data.h5', 'orders')
-        df_div.to_hdf('../data/data.h5', 'dividends')
-
-    # working on portfolio
-    pf = pd.read_hdf('../data/data.h5', 'panel')
-
-    # adding portfolio orders into a price panel
+# adding portfolio orders into a price panel
+# currently hacky, done via a dummy dataframe
+# not sure if there is a better way
+def merge_market_with_orders(df_ord, pf):
     pf['total_quantity'] = 0
     pf['total_cost_basis'] = 0
     for key in pf.minor_axis[:-1]:
@@ -216,7 +306,71 @@ if __name__ == "__main__":
         df.fillna(method='ffill', inplace=True)
         df.fillna(0, inplace=True)
         pf.ix[:, :, key] = df
-
+    # portfolio calculations
     pf['current_price'] = pf['total_quantity'] * pf['Close']
     pf['current_ratio'] =\
         (pf['current_price'].T / pf['current_price'].sum(axis=1)).T
+    return pf
+
+
+def merge_market_with_dividends(df_div, pf):
+    pf['total_dividends'] = 0
+    for key in pf.minor_axis[:-1]:
+        df1 = pf.loc[:, :, key]
+        df2 = df_div[df_div['symbol'] == key]
+        df2.set_index('date', inplace=True)
+        df = pd.merge(
+            df1, df2[['total_amount']],
+            left_index=True, right_index=True, how='left')
+        df.drop('total_dividends', axis=1, inplace=True)
+        df.rename(columns={'total_amount': 'total_dividends'}, inplace=True)
+        # now propagate values from last observed and then fill rest with zeros
+        df.fillna(0, inplace=True)
+        pf.ix[:, :, key] = df
+    return pf
+
+
+if __name__ == "__main__":
+    case = 'read'
+
+    if case == 'download':
+        rd = RobinhoodData('../data/data.h5')
+        df_div, df_ord = rd.download_robinhood_data()
+
+    if case == 'read':
+        df_div = pd.read_hdf('../data/data.h5', 'dividends')
+        df_ord = pd.read_hdf('../data/data.h5', 'orders')
+        pf = pd.read_hdf('../data/data.h5', 'panel')
+
+
+
+    # if case == 'download':
+    #     rb = login()
+    #     df_pos = process_positions(get_positions(rb))
+    #     df_ord = process_orders(get_orders(rb))
+    #     df_div = process_dividends(get_dividends(rb))
+    #     df_prc = get_history_for_symbols(rb, df_ord['symbol'].unique())
+
+    #     df_pos.to_hdf('../data/data.h5', 'positions')
+    #     df_ord.to_hdf('../data/data.h5', 'orders')
+    #     df_div.to_hdf('../data/data.h5', 'dividends')
+    #     df_prc.to_hdf('../data/data.h5', 'prices')
+
+
+
+
+    # if case == 'update':
+    #     df_div = process_dividends(pd.read_hdf('../data/data.h5', 'dividends'))
+    #     df_pos = process_positions(pd.read_hdf('../data/data.h5', 'positions'))
+    #     df_ord = process_orders(pd.read_hdf('../data/data.h5', 'orders'))
+    #     df_prc = pd.read_hdf('../data/data.h5', 'prices')
+
+    #     # df_ptf = process_portfolio(df_ord, df_prc)
+
+    #     df_pos.to_hdf('../data/data.h5', 'positions')
+    #     df_ord.to_hdf('../data/data.h5', 'orders')
+    #     df_div.to_hdf('../data/data.h5', 'dividends')
+
+    # # working on portfolio
+    # pf = merge_market_with_orders(df_ord, pf)
+    # pf = merge_market_with_dividends(df_div, pf)
