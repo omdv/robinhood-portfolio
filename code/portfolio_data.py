@@ -2,6 +2,11 @@ import pandas as pd
 from robinhood_data import RobinhoodData
 from market_data import MarketData
 
+"""
+this is likely not required - if merging is moved under portfolio model then
+this is just a wrapper around marketData and portfolioData
+"""
+
 
 class PortfolioData():
     """
