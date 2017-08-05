@@ -139,6 +139,11 @@ class PortfolioModels():
 if __name__ == '__main__':
     start_date = pd.to_datetime('07/07/2016')
     end_date = pd.to_datetime('07/03/2017')
+
+    df_ord = pd.read_hdf('../data/data.h5', 'orders')
+    start_date = df_ord.date.min()
+    end_date = df_ord.date.max()
+
     ptf = PortfolioModels('../data/data.h5')
     pf = ptf.calc_daily_returns(start_date, end_date).panelframe
     ptf.calc_full_return()

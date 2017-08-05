@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
-from robinhood_api import RobinhoodAPI
-from auth import user, password
+from backend.robinhood_api import RobinhoodAPI
+from backend.auth import user, password
 
 
 class RobinhoodData:
