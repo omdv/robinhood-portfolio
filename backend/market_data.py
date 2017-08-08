@@ -32,7 +32,8 @@ class MarketData:
         return pf
 
     # return all stocks and index in one panel
-    def download_market_data(self, tickers, start_date, end_date):
+    def download_save_market_data(self, tickers, start_date, end_date):
+        print("Downloading market data for {}-{}".format(start_date, end_date))
         pf = self._get_historical_prices(tickers, start_date, end_date)
         df = self._get_market_index(start_date, end_date)
         tb = self._get_treasury_yields(start_date, end_date)

@@ -1,5 +1,5 @@
 # TODO:
-# take into account the RB fee when selling position
+# 1. take into account the RB fee when selling position
 import numpy as np
 import pandas as pd
 
@@ -9,6 +9,7 @@ class PortfolioModels():
     def __init__(self, datafile):
         self.datafile = datafile
         self.panelframe = None
+        self.return_todate = None
         return None
 
     def _merge_market_with_orders(self, df_ord, pf):
@@ -38,7 +39,7 @@ class PortfolioModels():
 
     def _merge_market_with_dividends(self, df_div, pf):
         """
-        helper to merge the market frame with dividends
+        Helper to merge the market frame with dividends
         """
         pf['total_dividends'] = 0
         for key in pf.minor_axis[:-1]:
@@ -60,6 +61,8 @@ class PortfolioModels():
     def _prepare_portfolio_for_date_range(self, start_date, end_date):
         """
         Prepare portfolio panelframe for a given range of dates
+        by merging orders and dividends with stock prices and
+        calculating cumulative values
         -------------
         Parameters:
         start_date: as datetime[64]
@@ -69,10 +72,10 @@ class PortfolioModels():
         pf = pd.read_hdf(self.datafile, 'market')
 
         # create subset based on date range
-        df_ord = df_ord[(df_ord['date'] > start_date) &
-                        (df_ord['date'] < end_date)].copy()
-        df_div = df_div[(df_div['date'] > start_date) &
-                        (df_div['date'] < end_date)].copy()
+        df_ord = df_ord[(df_ord['date'] >= start_date) &
+                        (df_ord['date'] <= end_date)].copy()
+        df_div = df_div[(df_div['date'] >= start_date) &
+                        (df_div['date'] <= end_date)].copy()
         pf = pf[:, start_date:end_date, :].copy()
 
         # calculate cumulative quantitities and cost basis
@@ -91,8 +94,11 @@ class PortfolioModels():
 
     # process self.pf to add daily returns and related info
     def calc_daily_returns(self, start_date, end_date):
+
+        # prepare the portfolio panel
         self._prepare_portfolio_for_date_range(start_date, end_date)
         pf = self.panelframe
+
         # portfolio calculations
         pf['current_price'] = pf['total_quantity'] * pf['Close']
         pf['current_ratio'] =\
@@ -101,13 +107,16 @@ class PortfolioModels():
         pf['current_return_div'] = pf['current_return_raw'] +\
             pf['total_dividends']
         pf['current_roi'] = pf['current_return_div'] / pf['total_cost_basis']
+
+        # fix the current roi for positions with zero holdings
+        # TODO
+
+        # calculate final return
+        self.return_todate = self.panelframe['current_return_div', -1, :].sum()
+
+        # assign to panelframe
         self.panelframe = pf
         return self
-
-    # calculate full portfolio return up to date
-    def calc_full_return(self):
-        full_return = self.panelframe['current_return_div', -1, :].sum()
-        return full_return
 
     # beta for a provided panel, index value should be last column
     def calc_beta_by_covar(self):
@@ -129,10 +138,21 @@ class PortfolioModels():
 
     # alpha by capm model
     def alpha_by_capm(self):
+        """
+        Calculate alpha as per CAPM
+        www.alphagamma.eu/finance/how-to-calculate-alpha-of-your-portfolio/
+        -------------
+        Parameters:
+        """
         pf = self.panelframe
+        tb = pd.read_hdf(self.datafile, 'treasury_bills')
+
         # get portfolio age to estimate durations
         portfolio_age = pf['Open'].index.max() - pf['Open'].index.min()
         portfolio_age = portfolio_age.days
+
+        if portfolio_age > 365:
+            print(None)
         return None
 
 

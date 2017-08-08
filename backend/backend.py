@@ -21,7 +21,7 @@ class BackendClass(object):
         self.df_ord, df_div = rd.download_robinhood_data()
 
         md = MarketData(self.datafile)
-        md.download_market_data(
+        md.download_save_market_data(
             self.df_ord.symbol.unique(),
             self.df_ord.date.min().strftime('%Y%m%d'),
             self.df_ord.date.max().strftime('%Y%m%d'))

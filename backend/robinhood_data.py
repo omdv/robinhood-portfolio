@@ -13,7 +13,7 @@ class RobinhoodData:
     datafile : location of h5 datafile
     """
     def __init__(self, datafile):
-        self.datafile = '../data/data.h5'
+        self.datafile = datafile
 
     def _login(self):
         self.client = RobinhoodAPI()

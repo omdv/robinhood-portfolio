@@ -6,14 +6,37 @@ from backend.backend import BackendClass
 
 # Initialize
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'NOTSECURELOL'
+app.config['SECRET_KEY'] = 'My_l0ng_very_secure_secret_k3y'
 app.debug = True
+
+
+# generate html dataframe with portfolio summary
+def get_portfolio_returns():
+    # get current returns
+    bc = BackendClass('data/data.h5')
+    ptf = bc.calculate_portfolio_performance().ptf_daily
+    df = ptf[:, -1, :-1]
+    df = df[
+        ['total_quantity', 'total_cost_basis', 'total_dividends',
+         'current_price', 'current_ratio', 'current_return_raw',
+         'current_return_div', 'current_roi']]
+
+    html = df.to_html(
+        float_format=lambda x: '{0:.2f}'.format(x) if pd.notnull(x) else 'NA',
+        index=True)
+    return html
 
 
 # default route
 @app.route('/')
-def form():
-    return render_template('index.html')
+def portfolio():
+    # get current returns
+    return_html = get_portfolio_returns()
+
+    return render_template(
+        'pages/portfolio.html',
+        orders=None,
+        returns=return_html)
 
 
 # orders API
@@ -30,7 +53,7 @@ def returns():
     # Run calculations
     bc = BackendClass('data/data.h5')
     ptf = bc.calculate_portfolio_performance().ptf_daily
-    ptf = ptf['current_return_div'].to_json(orient='index', date_format='iso')
+    ptf = ptf['current_return_div'].to_json(orient='records', date_format='iso')
     return Response(ptf, mimetype='application/json')
 
 
