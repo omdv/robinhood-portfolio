@@ -1,0 +1,7 @@
+{% extends "layouts/main.html" %}
+{% block title %}Portfolio Summary{% endblock %}
+{% block content %}
+{{ dataframe_returns | safe}}
+{{ plot_returns_script | safe }}
+{{ plot_returns_div | safe }}
+{% endblock %}

@@ -106,10 +106,21 @@ class PortfolioModels():
         pf['current_return_raw'] = pf['current_price'] - pf['total_cost_basis']
         pf['current_return_div'] = pf['current_return_raw'] +\
             pf['total_dividends']
-        pf['current_roi'] = pf['current_return_div'] / pf['total_cost_basis']
 
-        # fix the current roi for positions with zero holdings
-        # TODO
+        # zero out cumulative total_cost_basis
+        pf['total_cost_basis'] = pf['total_cost_basis'].\
+            where(pf['total_quantity'] != 0).fillna(0)
+
+        pf['current_roi_raw'] =\
+            (pf['current_return_raw'] / pf['total_cost_basis']).\
+            where(pf['total_quantity'] != 0).fillna(method='ffill')
+
+        # Note that ROI calculation is not representative with dividends
+        # because dividends payout is cumulative and may be based on a larger
+        # total quantity than current
+        pf['current_roi_div'] =\
+            (pf['current_return_div'] / pf['total_cost_basis']).\
+            where(pf['total_quantity'] != 0)
 
         # calculate final return
         self.return_todate = self.panelframe['current_return_div', -1, :].sum()
