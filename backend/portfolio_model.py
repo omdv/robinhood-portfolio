@@ -9,7 +9,6 @@ class PortfolioModels():
     def __init__(self, datafile):
         self.datafile = datafile
         self.panelframe = None
-        self.return_todate = None
         return None
 
     def _merge_market_with_orders(self, df_ord, pf):
@@ -34,7 +33,7 @@ class PortfolioModels():
             # now propagate values from last observed
             df.fillna(method='ffill', inplace=True)
             df.fillna(0, inplace=True)
-            pf.ix[:, :, key] = df
+            pf.loc[:, :, key] = df
         return pf
 
     def _merge_market_with_dividends(self, df_div, pf):
@@ -55,7 +54,7 @@ class PortfolioModels():
             # now propagate values from last observed
             df.fillna(method='ffill', inplace=True)
             df.fillna(0, inplace=True)
-            pf.ix[:, :, key] = df
+            pf.loc[:, :, key] = df
         return pf
 
     def _prepare_portfolio_for_date_range(self, start_date, end_date):
@@ -89,11 +88,28 @@ class PortfolioModels():
         pf = self._merge_market_with_orders(df_ord, pf)
         pf = self._merge_market_with_dividends(df_div, pf)
 
+        # replace null stock prices using backfill to avoid issues with
+        # Daily_change and beta calculations
+        close_price = pf['Close']
+        close_price.values[close_price.values == 0] = np.nan
+        close_price.fillna(method='bfill', inplace=True)
+        pf['Close'] = close_price
+
         self.panelframe = pf
         return self
 
-    # process self.pf to add daily returns and related info
     def calc_daily_returns(self, start_date, end_date):
+        """
+        Calculate daily prices, cost-basis, ratios, returns, etc.
+        Used for plotting and also showing the final snapshot of
+        the portfolio
+        -------------
+        Parameters:
+        - None
+        Return:
+        - Panelframe with daily return values. Can be used for plot
+        and for html output
+        """
 
         # prepare the portfolio panel
         self._prepare_portfolio_for_date_range(start_date, end_date)
@@ -122,49 +138,178 @@ class PortfolioModels():
             (pf['current_return_div'] / pf['total_cost_basis']).\
             where(pf['total_quantity'] != 0)
 
-        # calculate final return
-        self.return_todate = self.panelframe['current_return_div', -1, :].sum()
-
         # assign to panelframe
         self.panelframe = pf
         return self
 
-    # beta for a provided panel, index value should be last column
     def calc_beta_by_covar(self):
+        """
+        Calculate betas for a provided panel with market index
+        being the last column
+        TODO: if one of the stocks was not traded for any portion
+        of the considered duration it will have a lower beta since the daily
+        price changes for the days when it was not trading will be zero,
+        i.e. no influence of the market
+        -------------
+        Parameters:
+        - None
+        Return:
+        - Total portfolio beta for every time index
+        """
         pf = self.panelframe
-        betas = dict()
-        # dates = pd.to_datetime([start_date, end_date])
-        pf.ix['Daily_change'] = (pf.ix['Close'] - pf.ix['Close'].shift(1))\
-            / pf.ix['Close'].shift(1) * 100
-        covar = np.cov(pf.ix['Daily_change'][1:], rowvar=False, ddof=0)
-        variance = np.var(pf.ix['Daily_change'])['market']
-        for i, j in enumerate(pf.ix['Daily_change'].columns):
-            betas[j] = covar[-1, i] / variance
-        self.betas = betas
-        return self
+        betas_dict = dict()
+        betas_list = list()
 
-    # beta for a provided panel based on simple return
-    def calc_beta_by_return(self, pf):
+        # calculate daily change, covariance and betas
+        pf['Daily_change'] = (pf['Close'] - pf['Close'].shift(1))\
+            / pf['Close'].shift(1) * 100
+        covar = np.cov(pf.loc['Daily_change'][1:], rowvar=False, ddof=0)
+        market_variance = np.var(pf.loc['Daily_change'])['market']
+        for i, j in enumerate(pf.loc['Daily_change'].columns):
+            # betas_dict[j] = covar[-1, i] / market_variance
+            betas_list.append(covar[-1, i] / market_variance)
+
+        # daily beta and mean beta
+        daily_beta = np.dot(pf['current_ratio'], betas_list)
+        ptf_beta = daily_beta.mean()
+        self.beta = ptf_beta
+        return ptf_beta
+
+    def calc_monthly_properties(self):
+        """
+        Calculate monthly returns and run all main calculations,
+        such as mean returns, std, portfolio mean and standard dev, beta, etc
+        References: 
+        1. p. 137 of Modern Portfolio Theory and Investment Analysis
+        edition 9
+        2. https://faculty.washington.edu/ezivot/econ424/portfolioTheoryMatrix.pdf
+        -------------
+        Parameters:
+        - None
+        Return:
+        - Dataframe of properties for each security in portfolio with
+        summary row for portfolio
+        """
+        pf = self.panelframe
+        close = pf['Close']
+
+        # get month start
+        month_start = close.groupby([lambda x: x.year,\
+            lambda x: x.month]).first()
+        month_end = close.groupby([lambda x: x.year,\
+            lambda x: x.month]).last()
+        monthly_change = (month_end - month_start) / month_start * 100
+
+        # get mean values and std by security
+        returns_mean = monthly_change.mean(axis=0)
+        returns_std = monthly_change.std(axis=0)
+
+        # get covariances
+        returns_covar = np.cov(monthly_change.values, rowvar=False, ddof=1)
+
+        # get betas for each stock
+        stock_betas = returns_covar[-1] / returns_std['market']**2
+
+        # get alphas for each stock
+        # ref [1]
+        stock_alphas = returns_mean - 
+
+        # get correlation coefficients
+        std_products = np.dot(returns_std.values.reshape(-1,1),
+            returns_std.values.reshape(1,-1))
+        returns_corr = returns_covar / std_products
+
+        # calculate portofolio values using the last know ratio
+        ptf_ratio = pf['current_ratio'].iloc[-1].values
+        ptf_std = np.sqrt(np.dot(
+            np.dot(ptf_ratio.reshape(1,-1),returns_covar),
+            ptf_ratio.reshape(-1,1)))
+        ptf_beta = np.dot(stock_betas, ptf_ratio)
         return None
 
-    # alpha by capm model
-    def alpha_by_capm(self):
+    def calc_alpha_by_capm(self):
         """
         Calculate alpha as per CAPM
         www.alphagamma.eu/finance/how-to-calculate-alpha-of-your-portfolio/
+        TODO: taking a mean of daily_betas
+        TODO:
         -------------
         Parameters:
+        - None
+        Returns:
+        - Jensen's Alpha
         """
         pf = self.panelframe
         tb = pd.read_hdf(self.datafile, 'treasury_bills')
 
         # get portfolio age to estimate durations
-        portfolio_age = pf['Open'].index.max() - pf['Open'].index.min()
+        start_date = pf['Open'].index.min()
+        end_date = pf['Open'].index.max()
+        portfolio_age = end_date - start_date
         portfolio_age = portfolio_age.days
 
+        # get total portfolio return
+        # stock_return = self.get_stock_return()
+        total_return = self.calc_total_return()
+        market_return = self.calc_market_return()
+
+        # get daily betas
+        # TODO - account for daily changes of beta
+        ptf_beta = self.calc_beta_by_covar()
+
         if portfolio_age > 365:
-            print(None)
+            # the code below will give the date when 1yr investement will end
+            pos = tb.index.get_loc((start_date + pd.DateOffset(years=1)) +
+                                   pd.offsets.MonthBegin(0))
+            # now get mean of TB1YR for 1yr+
+            treasury_return = tb.iloc[pos:, tb.columns.get_loc('TB1YR')].mean()
+        else:
+            print("Portfolio age less than 1yr is not yet implemented")
+            return -99
+
+        # calculate Jensen's alpha
+        # TODO - account for daily changes of beta
+        ptf_alpha = total_return - treasury_return - ptf_beta * \
+            (market_return - treasury_return)
+
+        self.jensen_alpha = ptf_alpha
+        return ptf_alpha, ptf_beta
+
+    def calc_assets_performance(self):
+        """
+        Calculate performance of individual assets, i.e. mean return,
+        standard deviation, corelations, etc.
+        -------------
+        Parameters:
+        - None
+        Returns:
+        - None
+        """
         return None
+
+    # get the portfolio return from stock price increase
+    def calc_stock_return(self):
+        pf = self.panelframe
+        # get total portfolio return
+        stock_return = pf['current_return_raw'].sum(1)[-1] /\
+            pf['total_cost_basis'].sum(1)[-1]
+        return stock_return * 100
+
+    # get the portfolio return from stock price increase and dividends
+    def calc_total_return(self):
+        pf = self.panelframe
+        # get total portfolio return
+        stock_return = pf['current_return_div'].sum(1)[-1] /\
+            pf['total_cost_basis'].sum(1)[-1]
+        return stock_return * 100
+
+    # get the market return
+    def calc_market_return(self):
+        pf = self.panelframe
+        start_price = pf['Close', :, 'market'][0]
+        end_price = pf['Close', :, 'market'][-1]
+        market_return = (end_price - start_price) / start_price
+        return market_return * 100
 
 
 if __name__ == '__main__':
@@ -177,4 +322,3 @@ if __name__ == '__main__':
 
     ptf = PortfolioModels('../data/data.h5')
     pf = ptf.calc_daily_returns(start_date, end_date).panelframe
-    ptf.calc_full_return()

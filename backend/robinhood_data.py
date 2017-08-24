@@ -98,6 +98,7 @@ class RobinhoodData:
             df.side == 'buy',
             df['cumulative_quantity'],
             -df['cumulative_quantity'])
+        df['signed_quantity'] = df['signed_quantity'].astype(np.int64)
 
         # calculate cost_basis at the moment of the order
         df['cost_basis'] = df['signed_quantity'] * df['average_price']
