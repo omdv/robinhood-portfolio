@@ -31,11 +31,13 @@ class BackendClass(object):
         # get panel
         df_ord = pd.read_hdf(self.datafile, 'orders')
         ptfm = PortfolioModels(self.datafile)
+
+        # prepare returns dataframe
         self.panel = ptfm.calc_daily_returns(
             df_ord.date.min(),
             df_ord.date.max()).panelframe
 
-        # prepare returns dataframe
+        # use only the last row
         df = self.panel.iloc[:, -1, :-1]
         df = df[
             ['total_quantity', 'total_cost_basis', 'total_dividends',
@@ -69,6 +71,11 @@ class BackendClass(object):
             'current_roi_div': 'RoR with dividends, %'}, inplace=True)
         self.df_returns = df
 
-        # assign for return to frontend
-        self.jensen_alpha, self.beta = ptfm.calc_alpha_by_capm()
+        # get stock properties
+        df_stocks, df_covar, df_corr, ptf_dict =\
+            ptfm.calc_portfolio_performance()
+
+        
+
+
         return self

@@ -1,6 +1,5 @@
 import os
 import pandas as pd
-import numpy as np
 from flask import Flask, render_template, Response
 from backend.backend import BackendClass
 from bokeh.embed import components
@@ -14,7 +13,7 @@ app.debug = True
 
 
 # Create the returns figure
-def create_figure(data):
+def create_returns_figure(data):
     plot = figure(
         x_axis_type='datetime',
         plot_width=800, plot_height=400,
@@ -32,23 +31,23 @@ def create_figure(data):
 
 
 # generate html dataframe with portfolio summary
-def get_portfolio_returns():
-    # get current returns
-    bc = BackendClass('data/data.h5')
-    bc.calc_all_values()
-    panel = bc.panel
-    df_returns = bc.df_returns
+# def get_portfolio_returns():
+#     # get current returns
+#     bc = BackendClass('data/data.h5')
+#     bc.calc_all_values()
+#     panel = bc.panel
+#     df_returns = bc.df_returns
 
-    # create figure
-    returns = panel['current_return_div'].sum(axis=1)
-    plot = create_figure(
-        dict(Returns=returns.values, Date=returns.index.values))
+#     # create figure
+#     returns = panel['current_return_div'].sum(axis=1)
+#     plot = create_figure(
+#         dict(Returns=returns.values, Date=returns.index.values))
 
-    # show returns
-    html = df_returns.to_html(
-        float_format=lambda x: '{0:.2f}'.format(x) if pd.notnull(x) else 'NA',
-        index=True)
-    return html, plot
+#     # show returns
+#     html = df_returns.to_html(
+#         float_format=lambda x: '{0:.2f}'.format(x) if pd.notnull(x) else 'NA',
+#         index=True)
+#     return html, plot
 
 
 # default route
@@ -61,7 +60,7 @@ def portfolio():
 
     # create figure
     returns = panel['current_return_div'].sum(axis=1)
-    plot_returns = create_figure(
+    plot_returns = create_returns_figure(
         dict(Returns=returns.values, Date=returns.index.values))
     plot_returns_script, plot_returns_div = components(plot_returns)
 
@@ -70,9 +69,14 @@ def portfolio():
         float_format=lambda x: '{0:.2f}'.format(x) if pd.notnull(x) else 'NA',
         index=True)
 
+    df_stocks_html = bc.df_stocks.to_html(
+        float_format=lambda x: '{0:.2f}'.format(x) if pd.notnull(x) else 'NA',
+        index=True)
+
     return render_template(
         'pages/portfolio.html',
         df_returns=df_returns_html,
+        df_stocks=df_stocks_html,
         plot_returns_script=plot_returns_script,
         plot_returns_div=plot_returns_div,
         ptf_jensen_alpha='{:.4f}'.format(bc.jensen_alpha),
