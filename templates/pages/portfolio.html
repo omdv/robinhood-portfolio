@@ -1,16 +1,19 @@
 {% extends "layouts/main.html" %}
 {% block title %}Portfolio Summary{% endblock %}
 {% block content %}
-<p>Portfolio returns</p>
+<h2>Performance</h2>
 {{ df_returns | safe}}
+<p>(*) Return rate for the portfolio is based on the current cost basis and does not include any cash remaining in the account.</p>
 {{ plot_returns_script | safe }}
 {{ plot_returns_div | safe }}
 
-<p>Jensen's Alpha</p>
-{{ ptf_jensen_alpha | safe }}
+<h2>Risk analysis</h2>
+{{ df_stock_risk | safe}}
+<p>Correlations</p>
+{{ df_stock_corr | safe}}
+{{ plot_corr_script | safe }}
+{{ plot_corr_div | safe }}
 
-<p>Beta</p>
-{{ ptf_beta | safe }}
-
+<h2>Optimizations</h2>
 
 {% endblock %}

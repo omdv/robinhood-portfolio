@@ -110,29 +110,23 @@ class RobinhoodData:
         # df['total_quantity'] = df.groupby('symbol').signed_quantity.cumsum()
         # df['total_cost_basis'] = df.groupby('symbol').cost_basis.cumsum()
         self.df_ord = df
+        return self
 
     # process_orders
     def _process_dividends(self):
         df = self.df_div.copy()
-        fields = [
-            'paid_at',
-            'amount',
-            'symbol']
-        df = df[fields]
 
         # convert types
-        for field in ['amount']:
+        for field in ['amount', 'position', 'rate']:
             df[field] = pd.to_numeric(df[field])
-        for field in ['paid_at']:
+        for field in ['paid_at', 'payable_date']:
             df[field] = pd.to_datetime(df[field])
 
         # add days
         df['date'] = df['paid_at'].apply(
             lambda x: pd.tslib.normalize_date(x))
-
-        # cumsum by symbol
-        # df['total_amount'] = df.groupby('symbol').amount.cumsum()
         self.df_div = df
+        return self
 
     def download_robinhood_data(self):
         self._login()
