@@ -1,9 +1,11 @@
 import os
 import pandas as pd
+import numpy as np
 from flask import Flask, render_template, Response
 from backend.backend import BackendClass
 from bokeh.embed import components
 from bokeh.plotting import figure
+from bokeh.palettes import brewer
 from bokeh.models import (
     ColumnDataSource,
     HoverTool,
@@ -13,11 +15,18 @@ from bokeh.models import (
     ColorBar,
     Span
 )
+from string import ascii_letters
+import seaborn as sns
+import matplotlib.pyplot as plt
+from io import BytesIO
+import base64
+import urllib.parse
 
 # Initialize
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'My_l0ng_very_secure_secret_k3y'
 app.debug = True
+MY_DPI = 96
 
 
 # Create the returns figure
@@ -40,51 +49,75 @@ def create_returns_figure(data):
 
 # Create the correlation heatmap
 def create_correlation_heatmap(data):
+    data = data.copy()
+    data.values[np.tril_indices_from(data)] = np.nan
     symbols = list(data.index)
 
     # reshape to 1D array or rates with a month and year for each row.
     df = pd.DataFrame(data.stack()).reset_index()
     df.columns = ['symbolX', 'symbolY', 'R']
 
-    # this is the colormap from the original NYTimes plot
-    colors = [
-        "#75968f", "#a5bab7", "#c9d9d3", "#e2e2e2", "#dfccce", "#ddb7b1",
-        "#cc7878", "#933b41", "#550b1d"]
+    colors = brewer["RdYlBu"][10]
     mapper = LinearColorMapper(palette=colors, low=df.R.min(), high=df.R.max())
 
     source = ColumnDataSource(df)
-    TOOLS = "hover,save,pan,box_zoom,reset,wheel_zoom"
+    TOOLS = "hover,save"
 
-    plot = figure(
-        title="TEST",
+    p = figure(
+        title="Correlations between stocks",
         x_range=symbols, y_range=list(reversed(symbols)),
         x_axis_location="above", plot_width=900, plot_height=400,
         tools=TOOLS, toolbar_location='below')
 
-    plot.grid.grid_line_color = None
-    plot.axis.axis_line_color = None
-    plot.axis.major_tick_line_color = None
-    plot.axis.major_label_text_font_size = "5pt"
-    plot.axis.major_label_standoff = 0
-    # plot.xaxis.major_label_orientation = pi / 3
+    p.grid.grid_line_color = None
+    p.axis.axis_line_color = None
+    p.axis.major_tick_line_color = None
+    p.axis.major_label_text_font_size = "10pt"
+    p.axis.major_label_standoff = 0
+    p.outline_line_color = None
 
-    plot.rect(
+    p.rect(
         x="symbolX", y="symbolY", width=1, height=1,
         source=source,
         fill_color={'field': 'R', 'transform': mapper},
         line_color=None)
 
-    color_bar = ColorBar(color_mapper=mapper, major_label_text_font_size="5pt",
-                         ticker=BasicTicker(desired_num_ticks=len(colors)),
-                         formatter=PrintfTickFormatter(format="%d%%"),
-                         label_standoff=6, border_line_color=None, location=(0, 0))
-    plot.add_layout(color_bar, 'right')
+    # color bar
+    color_bar = ColorBar(
+        color_mapper=mapper, major_label_text_font_size="5pt",
+        ticker=BasicTicker(desired_num_ticks=len(colors)),
+        formatter=PrintfTickFormatter(format="%.2f"),
+        label_standoff=6, border_line_color=None, location=(0, 0))
+    p.add_layout(color_bar, 'right')
 
-    plot.select_one(HoverTool).tooltips = [
-         ('pair', '@symbolX @symbolY'),
-         ('correlation', '@R'),
-    ]
-    return plot
+    p.select_one(HoverTool).tooltips = [
+         ('@symbolX vs @symbolY', '@R{%.4f}')]
+    return p
+
+
+def create_heatmap2(corr):
+    corr = corr.copy()
+    img = BytesIO()
+
+    # Generate a mask for the upper triangle
+    mask = np.zeros_like(corr, dtype=np.bool)
+    mask[np.triu_indices_from(mask)] = True
+
+    # Set up the matplotlib figure
+    f, ax = plt.subplots(figsize=(900/MY_DPI, 400/MY_DPI), dpi=MY_DPI)
+
+    # Generate a custom diverging colormap
+    cmap = sns.diverging_palette(220, 10, as_cmap=True)
+
+    # Draw the heatmap with the mask and correct aspect ratio
+    sns.heatmap(corr, mask=mask, cmap=cmap, vmax=.3, center=0,
+                square=True, linewidths=.5, cbar_kws={"shrink": .5},
+                annot=True, fmt=".3f")
+
+    f.savefig(img, format='png', dpi=MY_DPI)
+    img.seek(0)
+    plot_url = urllib.parse.quote(base64.b64encode(img.read()).decode())
+    return plot_url
 
 # default route
 @app.route('/')
@@ -102,6 +135,8 @@ def portfolio():
     # create heatmap
     plot_corr = create_correlation_heatmap(bc.df_stock_correlations)
     plot_corr_script, plot_corr_div = components(plot_corr)
+
+    plot_url2 = create_heatmap2(bc.df_stock_correlations)
 
     # convert dataframes to html
     df_returns_html = bc.df_returns.to_html(
@@ -124,7 +159,8 @@ def portfolio():
         df_stock_risk=df_stock_risk_html,
         df_stock_corr=df_stock_corr_html,
         plot_corr_div=plot_corr_div,
-        plot_corr_script=plot_corr_script
+        plot_corr_script=plot_corr_script,
+        plot_url=plot_url2
     )
 
 
