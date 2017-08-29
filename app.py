@@ -15,12 +15,9 @@ from bokeh.models import (
     ColorBar,
     Span
 )
-from string import ascii_letters
 import seaborn as sns
 import matplotlib.pyplot as plt
 from io import BytesIO
-import base64
-import urllib.parse
 
 # Initialize
 app = Flask(__name__)
@@ -42,7 +39,7 @@ def create_returns_figure(data):
     zero_returns = Span(
         location=0,
         dimension='width', line_color='red',
-        line_dash='dashed', line_width=3)
+        line_dash='dashed', line_width=1)
     plot.add_layout(zero_returns)
     return plot
 
@@ -95,11 +92,9 @@ def create_correlation_heatmap(data):
     return p
 
 
-def create_heatmap2(corr):
+def create_heatmap_svg(corr):
+    # prepare data
     corr = corr.copy()
-    img = BytesIO()
-
-    # Generate a mask for the upper triangle
     mask = np.zeros_like(corr, dtype=np.bool)
     mask[np.triu_indices_from(mask)] = True
 
@@ -107,17 +102,24 @@ def create_heatmap2(corr):
     f, ax = plt.subplots(figsize=(900/MY_DPI, 400/MY_DPI), dpi=MY_DPI)
 
     # Generate a custom diverging colormap
-    cmap = sns.diverging_palette(220, 10, as_cmap=True)
+    cmap = sns.diverging_palette(220, 20, n=10, as_cmap=True)
 
     # Draw the heatmap with the mask and correct aspect ratio
-    sns.heatmap(corr, mask=mask, cmap=cmap, vmax=.3, center=0,
-                square=True, linewidths=.5, cbar_kws={"shrink": .5},
-                annot=True, fmt=".3f")
+    sns.set_style('white')
+    ax = sns.heatmap(
+        corr, mask=mask, cmap=cmap, center=0,
+        square=False, linewidths=.5,
+        cbar_kws={
+            "shrink": .8,
+            'format': '%.2f'},
+        annot=True, fmt=".3f")
+    plt.setp(ax.get_yticklabels(), rotation=0)
 
-    f.savefig(img, format='png', dpi=MY_DPI)
-    img.seek(0)
-    plot_url = urllib.parse.quote(base64.b64encode(img.read()).decode())
-    return plot_url
+    # saving and exporting the svg
+    img_svg = BytesIO()
+    f.savefig(img_svg, format='svg', dpi=MY_DPI, bbox_inches='tight')
+    figdata_svg = '<svg' + img_svg.getvalue().decode('utf-8').split('<svg')[1]
+    return figdata_svg
 
 # default route
 @app.route('/')
@@ -133,10 +135,9 @@ def portfolio():
     plot_returns_script, plot_returns_div = components(plot_returns)
 
     # create heatmap
-    plot_corr = create_correlation_heatmap(bc.df_stock_correlations)
-    plot_corr_script, plot_corr_div = components(plot_corr)
-
-    plot_url2 = create_heatmap2(bc.df_stock_correlations)
+    # plot_corr = create_correlation_heatmap(bc.df_stock_correlations)
+    # plot_corr_script, plot_corr_div = components(plot_corr)
+    plot_corr_svg = create_heatmap_svg(bc.df_stock_correlations)
 
     # convert dataframes to html
     df_returns_html = bc.df_returns.to_html(
@@ -147,9 +148,9 @@ def portfolio():
         float_format=lambda x: '{0:.2f}'.format(x) if pd.notnull(x) else 'NA',
         index=True)
 
-    df_stock_corr_html = bc.df_stock_correlations.to_html(
-        float_format=lambda x: '{0:.2f}'.format(x) if pd.notnull(x) else 'NA',
-        index=True)
+    # df_stock_corr_html = bc.df_stock_correlations.to_html(
+    #     float_format=lambda x: '{0:.2f}'.format(x) if pd.notnull(x) else 'NA',
+    #     index=True)
 
     return render_template(
         'pages/portfolio.html',
@@ -157,10 +158,10 @@ def portfolio():
         plot_returns_script=plot_returns_script,
         plot_returns_div=plot_returns_div,
         df_stock_risk=df_stock_risk_html,
-        df_stock_corr=df_stock_corr_html,
-        plot_corr_div=plot_corr_div,
-        plot_corr_script=plot_corr_script,
-        plot_url=plot_url2
+        # df_stock_corr=df_stock_corr_html,
+        # plot_corr_div=plot_corr_div,
+        # plot_corr_script=plot_corr_script,
+        plot_corr_svg=plot_corr_svg
     )
 
 

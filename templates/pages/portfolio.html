@@ -9,11 +9,10 @@
 
 <h2>Risk analysis</h2>
 {{ df_stock_risk | safe}}
-<p>Correlations</p>
-{{ df_stock_corr | safe}}
-{{ plot_corr_script | safe }}
-{{ plot_corr_div | safe }}
-<img src="data:image/png;base64, {{ plot_url }}">
+<!-- {{ df_stock_corr | safe}} -->
+<!-- {{ plot_corr_script | safe }} -->
+<!-- {{ plot_corr_div | safe }} -->
+{{ plot_corr_svg | safe }}
 
 <h2>Optimizations</h2>
 

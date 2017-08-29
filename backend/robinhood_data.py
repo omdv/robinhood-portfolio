@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
-from backend.robinhood_api import RobinhoodAPI
-from backend.auth import user, password
+from robinhood_api import RobinhoodAPI
+from auth import user, password
 
 
 class RobinhoodData:
@@ -104,7 +104,14 @@ class RobinhoodData:
         df['cost_basis'] = df['signed_quantity'] * df['average_price']
 
         # group by days
-        df = df.groupby(['date', 'symbol'], as_index=False).sum()
+        agg_func = {
+            'average_price': 'mean',
+            'price': 'mean',
+            'signed_quantity': 'sum',
+            'cumulative_quantity': 'sum',
+            'fees': 'sum',
+            'cost_basis': 'sum'}
+        df = df.groupby(['date', 'symbol'], as_index=False).agg(agg_func)
 
         # cumsum by symbol
         # df['total_quantity'] = df.groupby('symbol').signed_quantity.cumsum()

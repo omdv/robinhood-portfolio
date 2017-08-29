@@ -142,42 +142,70 @@ class PortfolioModels():
         self.panelframe = pf
         return self
 
-    # OLD - REMOVE
-    def calc_beta_by_covar(self):
+    # TODO: refactor to apply
+    def _process_all_orders(df_ord):
+        df_ord['cum_quantity_to_date'] = df_ord.groupby('symbol').signed_quantity.cumsum()
+
+        # dfn = df_ord
+        # dfn['qdelta'] = dfn.apply(lambda x: , axis=1)
+
+        df_open = pd.DataFrame()
+        df_closed = pd.DataFrame()
+        # iterate over all symbols - replace by groupby?
+        for sym in df_ord.symbol.unique():
+            df = df_ord[df_ord.symbol == sym].copy()
+           
+            # initiate open and closed positions DF
+            df_open = df_open.append(df[df.signed_quantity > 0])
+            df_closed = df_closed.append(df[df.signed_quantity < 0])
+
+        return None
+
+
+    def orders_performance(self):
         """
-        Calculate betas for a provided panel with market index
-        being the last column
-        TODO: if one of the stocks was not traded for any portion
-        of the considered duration it will have a lower beta since the daily
-        price changes for the days when it was not trading will be zero,
-        i.e. no influence of the market
-        -------------
+        Calculate performance of every order
         Parameters:
-        - None
+        None
         Return:
-        - Total portfolio beta for every time index
+        Dataframe with returns for every execution
         """
-        pf = self.panelframe
-        # betas_dict = dict()
-        betas_list = list()
+        df = pd.read_hdf(self.datafile, 'orders')
 
-        # calculate daily change, covariance and betas
-        pf['Daily_change'] = (pf['Close'] - pf['Close'].shift(1))\
-            / pf['Close'].shift(1) * 100
-        covar = np.cov(pf.loc['Daily_change'][1:], rowvar=False, ddof=0)
-        market_variance = np.var(pf.loc['Daily_change'])['market']
-        for i, j in enumerate(pf.loc['Daily_change'].columns):
-            # betas_dict[j] = covar[-1, i] / market_variance
-            betas_list.append(covar[-1, i] / market_variance)
+        # get latest market prices
+        last_prices = self.panelframe['Closed'].iloc[-1]
 
-        # daily beta and mean beta
-        daily_beta = np.dot(pf['current_ratio'], betas_list)
-        ptf_beta = daily_beta.mean()
-        self.beta = ptf_beta
-        return ptf_beta
+        # calculate P&L for open and closed positions
+        df['current_price'] = df.apply(
+            lambda x:
+            x['cumulative_quantity'] * last_prices[x['symbol']], axis=1)
+
+        # open P&L is straightforward
+        df['Open P&L'] = df.apply(
+            lambda x: (x['current_price'] - x['cost_basis']) if
+            x['signed_quantity'] > 0 else 0, axis=1)
+
+        # to calculate close P&L we need to determine the average weighted
+        # price of shares bought till to date of sale
+        df['cum_cost_basis_open_todate'] = df.apply(
+            lambda x:
+            df.loc[
+                (df.symbol == x.symbol) &
+                (df.date <= x.date) &
+                (df.signed_quantity > 0), 'cost_basis'
+            ].sum(), axis=1)
+
+        df['cum_quantity_open_todate'] = df.apply(
+            lambda x:
+            df.loc[
+                (df.symbol == x.symbol) &
+                (df.date <= x.date), 'signed_quantity'
+            ].sum(), axis=1)
+
+        return df
 
     # NEW - CHECKED
-    def stock_risk_analysis(self):
+    def stock_risk_analysis(self, risk_free_return=0):
         """
         Calculate monthly returns and run all main portfolio performance
         calculations, such as mean returns, std, portfolio mean, std, beta, etc
@@ -191,15 +219,14 @@ class PortfolioModels():
         Return:
         - Dataframe of properties for each security in portfolio
         """
-        # pf = self.panelframe
-        # ptf_returns = pf['current_total_return'].sum(1)
 
         # get monthly changes for all stocks
-        stock_monthly_change = self.monthly_returns()
+        stock_monthly_change = self.stock_monthly_returns()
 
         # get mean values and std by security
         returns_mean = stock_monthly_change.mean(axis=0)
         returns_std = stock_monthly_change.std(axis=0)
+        returns_var = stock_monthly_change.var(axis=0)
 
         # get covariance matrix
         returns_covar = np.cov(
@@ -215,13 +242,15 @@ class PortfolioModels():
         stock_betas = np.round(returns_covar[-1] / returns_std['market']**2, 5)
 
         # get alphas for each stock, ref. [1], convert to annual value
-        stock_alphas = returns_mean - stock_betas * returns_mean['market']
+        stock_alphas = returns_mean - stock_betas *\
+            (returns_mean['market'] - risk_free_return) -\
+            risk_free_return
         stock_alphas = stock_alphas * 12
 
         # construct dataframes with stock properties
         df_stocks = pd.DataFrame({
             'returns_mean': returns_mean,
-            'returns_std': returns_std,
+            'returns_var': returns_var,
             'beta': stock_betas,
             'alpha': stock_alphas
         })
@@ -231,108 +260,54 @@ class PortfolioModels():
             columns=returns_mean.keys(),
             index=returns_mean.keys())
 
-        # portfolio ratios at the end of every month
-        # ratios_month_end = ratios.groupby([
-        #     lambda x: x.year, lambda x: x.month]).last()
-        # ptf_returns_monthly = stock_monthly_change * ratios_month_end
-        # ptf_returns_monthly = ptf_returns_monthly.sum(axis=1)
-        # ptf_month_start = ptf_returns.groupby([
-        #     lambda x: x.year,
-        #     lambda x: x.month]).first()
-        # ptf_month_end = ptf_returns.groupby([
-        #     lambda x: x.year,
-        #     lambda x: x.month]).last()
-        # cost_month_start = pf['cost_basis'].sum(1).groupby([
-        #     lambda x: x.year,
-        #     lambda x: x.month]).first()
+        # use empyrical to get monthly returns for portfolio
+        ptf_monthly_returns = self.ptf_monthly_returns()
+        df_stocks.loc['portfolio', 'returns_mean'] = ptf_monthly_returns.mean()
+        df_stocks.loc['portfolio', 'returns_var'] = ptf_monthly_returns.var()
 
-        # ptf_monthly_change = (ptf_month_end - ptf_month_start) \
-        #     / cost_month_start * 100
-
-        # # calculate portofolio values using the last known ratio
-        # ptf_ratio = pf['current_ratio'].iloc[-1].values
-        # ptf_std = np.sqrt(np.dot(
-        #     np.dot(ptf_ratio.reshape(1, -1), returns_covar),
-        #     ptf_ratio.reshape(-1, 1)))
-        # ptf_beta = np.dot(stock_betas, ptf_ratio)
-        # ptf_alpha = np.dot(stock_alphas, ptf_ratio)
-        # ptf_return = ptf_monthly_change[1:].mean(axis=0)
-
-        # df_stocks.loc['portfolio', 'returns_mean'] = ptf_return
-        # df_stocks.loc['portfolio', 'returns_std'] = ptf_std[0][0]
-        # df_stocks.loc['portfolio', 'beta'] = ptf_beta
-        # df_stocks.loc['portfolio', 'alpha'] = ptf_alpha
-
-        # df_covar = pd.DataFrame(
-        #     returns_covar,
-        #     columns=returns_mean.keys(),
-        #     index=returns_mean.keys())
+        ptf_alpha_beta = emp.alpha_beta(
+            ptf_monthly_returns,
+            stock_monthly_change['market'],
+            period='monthly')
+        df_stocks.loc['portfolio', 'alpha'] = ptf_alpha_beta[0]
+        df_stocks.loc['portfolio', 'beta'] = ptf_alpha_beta[1]
 
         return df_stocks, df_corr
 
-    def calc_alpha_by_capm(self):
-        """
-        Calculate alpha as per CAPM
-        www.alphagamma.eu/finance/how-to-calculate-alpha-of-your-portfolio/
-        TODO: taking a mean of daily_betas
-        TODO:
-        -------------
-        Parameters:
-        - None
-        Returns:
-        - Jensen's Alpha
-        """
-        pf = self.panelframe
-        tb = pd.read_hdf(self.datafile, 'treasury_bills')
+    def risk_analysis_empyrical(self):
+        # get monthly changes for all stocks
+        stock_returns = self.stock_monthly_returns()
 
-        # get portfolio age to estimate durations
-        start_date = pf['Open'].index.min()
-        end_date = pf['Open'].index.max()
-        portfolio_age = end_date - start_date
-        portfolio_age = portfolio_age.days
+        # get mean values and std by security
+        returns_mean = stock_returns.mean(axis=0)
+        returns_var = stock_returns.var(axis=0)
 
-        # get total portfolio return
-        # stock_return = self.get_stock_return()
-        total_return = self.calc_total_return()
-        market_return = self.calc_market_return()
+        # construct resulting dataframe
+        df_stocks = pd.DataFrame({
+            'returns_mean': returns_mean,
+            'returns_var': returns_var,
+        })
 
-        # get daily betas
-        # TODO - account for daily changes of beta
-        ptf_beta = self.calc_beta_by_covar()
+        df_stocks[['alpha', 'beta']] = stock_returns.\
+            apply(lambda x: emp.alpha_beta(
+                x, stock_returns['market'], period='monthly')).\
+            apply(pd.Series)
 
-        if portfolio_age > 365:
-            # the code below will give the date when 1yr investement will end
-            pos = tb.index.get_loc((start_date + pd.DateOffset(years=1)) +
-                                   pd.offsets.MonthBegin(0))
-            # now get mean of TB1YR for 1yr+
-            treasury_return = tb.iloc[pos:, tb.columns.get_loc('TB1YR')].mean()
-        else:
-            print("Portfolio age less than 1yr is not yet implemented")
-            return -99
+        # use empyrical to get monthly returns for portfolio
+        ptf_monthly_returns = self.ptf_monthly_returns()
+        df_stocks.loc['portfolio', 'returns_mean'] = ptf_monthly_returns.mean()
+        df_stocks.loc['portfolio', 'returns_var'] = ptf_monthly_returns.var()
 
-        # calculate Jensen's alpha
-        # TODO - account for daily changes of beta
-        ptf_alpha = total_return - treasury_return - ptf_beta * \
-            (market_return - treasury_return)
+        ptf_alpha_beta = emp.alpha_beta(
+            ptf_monthly_returns,
+            stock_returns['market'],
+            period='monthly')
+        df_stocks.loc['portfolio', 'alpha'] = ptf_alpha_beta[0]
+        df_stocks.loc['portfolio', 'beta'] = ptf_alpha_beta[1]
 
-        self.jensen_alpha = ptf_alpha
-        return ptf_alpha, ptf_beta
+        return df_stocks
 
-    # get the portfolio return from stock price increase and dividends
-    def calc_total_return(self):
-        pf = self.panelframe
-        # get total portfolio return
-        stock_return = pf['current_total_return'].iloc[-1].sum() /\
-            pf['cost_basis'].iloc[-1].sum()
-        return stock_return * 100
 
-    # get the market return
-    def calc_market_return(self):
-        pf = self.panelframe
-        start_price = pf['Close', :, 'market'][0]
-        end_price = pf['Close', :, 'market'][-1]
-        market_return = (end_price - start_price) / start_price
-        return market_return * 100
 
     # USED
     def risk_free_return(self, period='monthly'):
@@ -352,19 +327,7 @@ class PortfolioModels():
         }
         return tb[TBILLS_PERIODS[period]].mean()
 
-    def alpha_and_beta(self, period='monthly'):
-        """
-        Alpha and beta for all stocks, market and portfolio overall.
-        Based on monthly returns
-        -------------
-        Parameters:
-        - period: monthly, quarterly or annual
-        Returns:
-        - dataframe with alpha, beta
-        """
-        return None
-
-    def monthly_capital_returns(self):
+    def stock_monthly_capital_gain(self):
         """
         Monthly capital gain for all stocks, market index and portfolio
         -------------
@@ -386,20 +349,9 @@ class PortfolioModels():
         stock_monthly_return = (stock_month_end - stock_month_start) /\
             stock_month_start * 100
 
-        # # monthly changes in portfolio value
-        # # using indirect calculation with mean ratios
-        # # TODO - implement a more accurate method
-        # ptf_monthly_ratio = pf['current_ratio'].groupby([
-        #     lambda x: x.year,
-        #     lambda x: x.month]).mean()
-        # ptf_monthly_returns = (stock_monthly_return * ptf_monthly_ratio).sum(1)
-
-        # # merge the two
-        # stock_monthly_return['portfolio'] = ptf_monthly_returns.values
-
         return stock_monthly_return
 
-    def monthly_div_returns(self):
+    def stock_monthly_div(self):
         """
         Monthly dividend yield in %
         Note that div are accounted for only if position existed
@@ -415,16 +367,9 @@ class PortfolioModels():
             lambda x: x.year,
             lambda x: x.month]).mean()
         stock_monthly_div_yield.fillna(0, inplace=True)
-
-        # ptf_monthly_ratio = pf['current_ratio'].groupby([
-        #     lambda x: x.year,
-        #     lambda x: x.month]).mean()
-        # ptf_monthly_div_yield = (ptf_monthly_ratio * stock_monthly_div_yield).sum(1)
-
-        # stock_monthly_div_yield['portfolio'] = ptf_monthly_div_yield.values
         return stock_monthly_div_yield
 
-    def monthly_returns(self):
+    def stock_monthly_returns(self):
         """
         Monthly returns = capital gain + dividend yields for all symbols
         -------------
@@ -433,7 +378,7 @@ class PortfolioModels():
         Returns:
         - dataframe with monthly returns in % by symbol
         """
-        return self.monthly_capital_returns() + self.monthly_div_returns()
+        return self.stock_monthly_capital_gain() + self.stock_monthly_div()
 
     def annual_returns(self):
         """
@@ -444,7 +389,20 @@ class PortfolioModels():
         Returns:
         - merge with other returns
         """
-        return emp.annual_return(self.monthly_returns()/100, period='monthly')
+        return emp.annual_return(
+            self.stock_monthly_returns()/100, period='monthly')
+
+    def ptf_monthly_returns(self):
+        # monthly changes in portfolio value
+        # using indirect calculation with mean ratios
+        # TODO - implement a more accurate method
+        stock_monthly_change = self.stock_monthly_returns()
+        ptf_monthly_ratio = self.panelframe['current_ratio'].groupby([
+            lambda x: x.year,
+            lambda x: x.month]).mean()
+        ptf_monthly_returns = (
+            stock_monthly_change * ptf_monthly_ratio).sum(1)
+        return ptf_monthly_returns
 
 
 if __name__ == '__main__':
@@ -457,4 +415,5 @@ if __name__ == '__main__':
 
     ptf = PortfolioModels('../data/data.h5')
     pf = ptf.daily_portfolio_changes(start_date, end_date).panelframe
-    df1, df2 = ptf.stock_risk_analysis()
+    df1, df2 = ptf.stock_risk_analysis(ptf.risk_free_return()/12.)
+    df3 = ptf.risk_analysis_empyrical()

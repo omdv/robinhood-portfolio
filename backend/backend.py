@@ -41,7 +41,7 @@ class BackendClass(object):
 
     def _get_latest_portfolio_snapshot(self):
         # use only the last row
-        df = self._panel.iloc[:, -1, :]     
+        df = self._panel.iloc[:, -1, :]
         columns = [
             'total_quantity',
             'current_ratio',
@@ -69,13 +69,12 @@ class BackendClass(object):
 
         # fix market return rate
         df.loc['market', :] = '-'
-        df.loc['market', 'current_total_return'] = (
+        market_return = (
             self._panel['Close', :, 'market'][-1] -
             self._panel['Close', :, 'market'][0])
-        df.loc['market', 'current_return_rate'] = (
-            df.loc['market', 'current_total_return']) /\
-            self._panel['Close', :, 'market'][0] * 100
-        df.rename(index={'market': '^SPX'}, inplace=True)
+        df.loc['market', 'current_return_rate'] =\
+            market_return / self._panel['Close', :, 'market'][0] * 100
+        df.rename(index={'market': 'S&P 500'}, inplace=True)
 
         # rename for HTML
         df.rename(columns={
@@ -95,6 +94,13 @@ class BackendClass(object):
     def _get_stock_risk(self):
         self.df_stock_risk, self.df_stock_correlations =\
             self._ptfm.stock_risk_analysis()
+
+        self.df_stock_risk.rename(columns={
+            'alpha': "Jensen's alpha, %",
+            'beta': 'Beta',
+            'returns_mean': 'Monthly return mean, %',
+            'returns_var': 'Monthly return variance, %'
+        }, inplace=True)
         return self
 
     def calculate_all(self):
