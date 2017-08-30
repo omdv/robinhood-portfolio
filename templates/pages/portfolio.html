@@ -1,13 +1,18 @@
 {% extends "layouts/main.html" %}
 {% block title %}Portfolio Summary{% endblock %}
 {% block content %}
-<h2>Performance</h2>
+<h2>Portfolio performance</h2>
 {{ df_returns | safe}}
 <p>(*) Return rate for the portfolio is based on the current cost basis and does not include any cash remaining in the account.</p>
 {{ plot_returns_script | safe }}
 {{ plot_returns_div | safe }}
+<p>Best and worst closed positions</p>
+{{ df_closed_positions | safe}}
+<p>Best and worst open positions</p>
+{{ df_open_positions | safe}}
 
 <h2>Risk analysis</h2>
+
 {{ df_stock_risk | safe}}
 <!-- {{ df_stock_corr | safe}} -->
 <!-- {{ plot_corr_script | safe }} -->

@@ -24,6 +24,7 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = 'My_l0ng_very_secure_secret_k3y'
 app.debug = True
 MY_DPI = 96
+sns.set_style("whitegrid")
 
 
 # Create the returns figure
@@ -105,7 +106,7 @@ def create_heatmap_svg(corr):
     cmap = sns.diverging_palette(220, 20, n=10, as_cmap=True)
 
     # Draw the heatmap with the mask and correct aspect ratio
-    sns.set_style('white')
+    sns.set(rc={'axes.facecolor':'cornflowerblue', 'figure.facecolor':'cornflowerblue'})
     ax = sns.heatmap(
         corr, mask=mask, cmap=cmap, center=0,
         square=False, linewidths=.5,
@@ -137,7 +138,7 @@ def portfolio():
     # create heatmap
     # plot_corr = create_correlation_heatmap(bc.df_stock_correlations)
     # plot_corr_script, plot_corr_div = components(plot_corr)
-    plot_corr_svg = create_heatmap_svg(bc.df_stock_correlations)
+    plot_corr_svg = create_heatmap_svg(bc.df_stock_corr)
 
     # convert dataframes to html
     df_returns_html = bc.df_returns.to_html(
@@ -148,9 +149,14 @@ def portfolio():
         float_format=lambda x: '{0:.2f}'.format(x) if pd.notnull(x) else 'NA',
         index=True)
 
-    # df_stock_corr_html = bc.df_stock_correlations.to_html(
+    df_closed_positions_html = bc.df_closed_positions.to_html(
+        float_format=lambda x: '{0:.2f}'.format(x) if pd.notnull(x) else 'NA',
+        index=False)
+
+    # df_open_positions_html = bc.df_open_positions.to_html(
     #     float_format=lambda x: '{0:.2f}'.format(x) if pd.notnull(x) else 'NA',
-    #     index=True)
+    #     index=False)
+
 
     return render_template(
         'pages/portfolio.html',
@@ -158,8 +164,8 @@ def portfolio():
         plot_returns_script=plot_returns_script,
         plot_returns_div=plot_returns_div,
         df_stock_risk=df_stock_risk_html,
-        # df_stock_corr=df_stock_corr_html,
-        # plot_corr_div=plot_corr_div,
+        df_closed_positions=df_closed_positions_html,
+        df_open_positions=bc.df_open_positions,
         # plot_corr_script=plot_corr_script,
         plot_corr_svg=plot_corr_svg
     )

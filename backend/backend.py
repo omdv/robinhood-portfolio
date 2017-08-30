@@ -6,8 +6,8 @@ from backend.market_data import MarketData
 
 class BackendClass(object):
     """
-    Main backend class, provides wrappers to donwload robinhood and market
-    data, provides access to portfolio models
+    Backend wrapper class, provides wrappers to donwload robinhood and market
+    data, provides access to portfolio models. Mostly deals with UI logic.
     --------
     datafile: path to hdf datafile
     """
@@ -28,44 +28,49 @@ class BackendClass(object):
         return self
 
     def _get_daily_portfolio_panel(self):
+        """
+        Generate a panelframe with daily portfolio changes
+        """
         self._ptfm = PortfolioModels(self.datafile)
         self._df_ord = pd.read_hdf(self.datafile, 'orders')
-        self._panel = self._ptfm.daily_portfolio_changes(
-            self._df_ord.date.min(),
-            pd.Timestamp("today").strftime('%Y%m%d')).panelframe
+        self._panel = self._ptfm.daily_portfolio_changes().panelframe
         return self
 
-    def _get_daily_returns_series(self):
-        self.daily_returns = self._panel['current_total_return'].sum(axis=1)
+    def _get_daily_total_returns(self):
+        """
+        Generate a series of cumulative daily  returns for a plot
+        """
+        self.daily_returns = self._panel['cum_total_return'].sum(axis=1)
         return self
 
     def _get_latest_portfolio_snapshot(self):
         # use only the last row
         df = self._panel.iloc[:, -1, :]
         columns = [
-            'total_quantity',
-            'current_ratio',
-            'cost_basis',
-            'current_value',
-            'current_capital_gain',
-            'total_dividends',
-            'current_total_return',
+            'cum_size',
+            'current_weight',
+            'cum_cost_basis',
+            'cum_value',
+            'cum_unrealized_gain',
+            'cum_realized_gain',
+            'cum_dividends',
+            'cum_total_return',
             'current_return_rate'
         ]
         df = df[columns]
         # convert ratios to percent
-        df['current_ratio'] = df['current_ratio'] * 100
+        df['current_weight'] = df['current_weight'] * 100
 
         # add summary row
         df = df.copy()  # avoid chained assignment warning
         df.loc['Summary', :] = df.sum(axis=0)
-
         df.loc['Summary', 'current_return_rate'] =\
-            df.loc['Summary', 'current_total_return'] /\
-            df.loc['Summary', 'cost_basis'] * 100
+            df.loc['Summary', 'cum_total_return'] /\
+            df.loc['Summary', 'cum_cost_basis'] * 100
 
-        # zero-out return rate for closed positions
-        df.loc[df['total_quantity'] == 0, 'current_return_rate'] = 0
+        # how to deal with closed positions
+        df['current_return_rate'].fillna(method='ffill', inplace=True)
+        # df.loc[df['cum_size'] == 0, 'current_return_rate'] = 0
 
         # fix market return rate
         df.loc['market', :] = '-'
@@ -78,13 +83,14 @@ class BackendClass(object):
 
         # rename for HTML
         df.rename(columns={
-            'total_quantity': 'Total shares',
-            'cost_basis': 'Current cost basis, $',
-            'total_dividends': 'Dividends, $',
-            'current_value': 'Current value, $',
-            'current_ratio': 'Portfolio ratio, %',
-            'current_capital_gain': 'Capital gain, $',
-            'current_total_return': 'Total return, $',
+            'cum_size': 'Total shares',
+            'cum_cost_basis': 'Current cost basis, $',
+            'cum_dividends': 'Dividends, $',
+            'cum_value': 'Current value, $',
+            'current_weight': 'Portfolio weight, %',
+            'cum_unrealized_gain': 'Unrealized gain, $',
+            'cum_realized_gain': 'Realized gain, $',
+            'cum_total_return': 'Total return, $',
             'current_return_rate': 'Return rate, % (*)'
         }, inplace=True)
 
@@ -92,8 +98,7 @@ class BackendClass(object):
         return self
 
     def _get_stock_risk(self):
-        self.df_stock_risk, self.df_stock_correlations =\
-            self._ptfm.stock_risk_analysis()
+        self.df_stock_risk = self._ptfm.stock_risk_analysis()
 
         self.df_stock_risk.rename(columns={
             'alpha': "Jensen's alpha, %",
@@ -101,6 +106,89 @@ class BackendClass(object):
             'returns_mean': 'Monthly return mean, %',
             'returns_var': 'Monthly return variance, %'
         }, inplace=True)
+        return self
+
+    def _get_stock_correlations(self):
+        self.df_stock_corr = self._ptfm.stock_correlation_matrix()
+        return self
+
+    def _get_best_worst_closed_positions(self):
+        """
+        Get three best/worst closed positions by realized gains
+        """
+        self._df_closed = pd.read_hdf(self.datafile, 'closed')
+        df1 = self._df_closed.nlargest(3, 'realized_gains')
+        df2 = self._df_closed.nsmallest(3, 'realized_gains')
+        df = pd.concat([df1, df2]).sort_values(by='realized_gains')
+        df['buy_price'] = df['current_cost_basis'] / df['signed_size']
+
+        columns = [
+            'date', 'symbol', 'current_size', 'buy_price',
+            'average_price', 'realized_gains']
+        df = df[columns]
+        df.rename(columns={
+            'date': 'Date',
+            'symbol': 'Security',
+            'current_size': 'Shares',
+            'buy_price': 'Average buy price, $',
+            'average_price': 'Average sell price, $',
+            'realized_gains': 'Realized gain, $'
+            }, inplace=True)
+        self.df_closed_positions = df
+        return self
+
+    def _get_best_worst_open_positions(self):
+        """
+        Get three best/worst open positions by unrealized gains
+        """
+        market_prices = self._panel['Close'].iloc[-1]
+
+        self._df_open = pd.read_hdf(self.datafile, 'open')
+        df = self._df_open.copy()
+        df['current_price'] =\
+            df.apply(lambda x: market_prices[x.symbol], axis=1)
+        df['unrealized_gains'] =\
+            (df['current_price'] - df['average_price']) * df['final_size']
+
+        df1 = df.nlargest(3, 'unrealized_gains').copy()
+        df2 = df.nsmallest(3, 'unrealized_gains').copy()
+        df = pd.concat([df1, df2]).sort_values(by='unrealized_gains')
+
+        # apply style
+        # df.style.apply(lambda x: ["background: red" if x.unrealized_gains < 0 else "background: lightgreen"], axis=1)
+
+        columns = [
+            'date', 'symbol', 'final_size',
+            'average_price', 'current_price', 'unrealized_gains']
+        df = df[columns]
+        df.rename(columns={
+            'date': 'Date',
+            'symbol': 'Security',
+            'final_size': 'Shares',
+            'average_price': 'Average buy price, $',
+            'current_price': 'Current market price, $',
+            'unrealized_gains': 'Unrealized gain, $'
+            }, inplace=True)
+
+        def color_depending_on_gain(row):
+            """
+            Takes a scalar and returns a string with
+            the css property `'color: red'` for negative
+            strings, black otherwise.
+            """
+            color = 'red' if row['Unrealized gain, $'] < 0 else 'green'
+            background = ['background-color: {}'.format(color) for _ in row]
+            return background
+
+        self.df_open_positions = df.style.\
+            set_table_attributes('class="dataframe"').\
+            bar(subset=['Unrealized gain, $'], align='mid', color=['#d65f5f', '#5fba7d']).\
+            set_table_styles([
+                {'selector': '.row_heading',
+                 'props': [('display', 'none')]},
+                {'selector': '.blank.level0',
+                 'props': [('display', 'none')]}]).\
+            render()
         return self
 
     def calculate_all(self):
@@ -111,15 +199,11 @@ class BackendClass(object):
         """
         self._get_daily_portfolio_panel()
         self._get_latest_portfolio_snapshot()
-        self._get_daily_returns_series()
+        self._get_daily_total_returns()
         self._get_stock_risk()
-
-        # get stock properties
-        # df_stocks, df_covar, df_corr, ptf_dict =\
-        #     ptfm.calc_portfolio_performance()
-        # self.df_stocks = pd.DataFrame()
-        # self.df_covar = pd.DataFrame()
-        # self.df_corr = pd.DataFrame()
+        self._get_stock_correlations()
+        self._get_best_worst_closed_positions()
+        self._get_best_worst_open_positions()
         return self
 
 
