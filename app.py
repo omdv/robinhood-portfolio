@@ -143,20 +143,12 @@ def portfolio():
     # convert dataframes to html
     df_returns_html = bc.df_returns.to_html(
         float_format=lambda x: '{0:.2f}'.format(x) if pd.notnull(x) else 'NA',
+        classes="tr:last-child { background: #f8f8f8; }",
         index=True)
 
     df_stock_risk_html = bc.df_stock_risk.to_html(
         float_format=lambda x: '{0:.2f}'.format(x) if pd.notnull(x) else 'NA',
         index=True)
-
-    df_closed_positions_html = bc.df_closed_positions.to_html(
-        float_format=lambda x: '{0:.2f}'.format(x) if pd.notnull(x) else 'NA',
-        index=False)
-
-    # df_open_positions_html = bc.df_open_positions.to_html(
-    #     float_format=lambda x: '{0:.2f}'.format(x) if pd.notnull(x) else 'NA',
-    #     index=False)
-
 
     return render_template(
         'pages/portfolio.html',
@@ -164,10 +156,10 @@ def portfolio():
         plot_returns_script=plot_returns_script,
         plot_returns_div=plot_returns_div,
         df_stock_risk=df_stock_risk_html,
-        df_closed_positions=df_closed_positions_html,
+        df_closed_positions=bc.df_closed_positions,
         df_open_positions=bc.df_open_positions,
-        # plot_corr_script=plot_corr_script,
-        plot_corr_svg=plot_corr_svg
+        plot_corr_svg=plot_corr_svg,
+        ptf_stats=bc.ptf_stats
     )
 
 

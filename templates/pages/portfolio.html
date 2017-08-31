@@ -2,10 +2,13 @@
 {% block title %}Portfolio Summary{% endblock %}
 {% block content %}
 <h2>Portfolio performance</h2>
+Latest portfolio snapshot
 {{ df_returns | safe}}
 <p>(*) Return rate for the portfolio is based on the current cost basis and does not include any cash remaining in the account.</p>
 {{ plot_returns_script | safe }}
 {{ plot_returns_div | safe }}
+<p>Portfolio stats</p>
+{{ ptf_stats | safe }}
 <p>Best and worst closed positions</p>
 {{ df_closed_positions | safe}}
 <p>Best and worst open positions</p>
@@ -19,6 +22,6 @@
 <!-- {{ plot_corr_div | safe }} -->
 {{ plot_corr_svg | safe }}
 
-<h2>Optimizations</h2>
+<h2>Efficient frontier</h2>
 
 {% endblock %}

@@ -3,13 +3,16 @@
 import numpy as np
 import pandas as pd
 import empyrical as emp
-
+import portfolioopt as pfopt
+import pyfolio as pyf
+from scipy import stats
 
 # calculating portfolio performance
 class PortfolioModels():
     def __init__(self, datafile):
         self.datafile = datafile
         self.panelframe = None
+        self.APPROX_BDAYS_PER_YEAR = 252
         return None
 
     def _merge_market_with_orders(self, df_ord, pf):
@@ -183,82 +186,11 @@ class PortfolioModels():
         # calculate ROI
         pf['current_return_rate'] =\
             (pf['cum_total_return'] / pf['cum_cost_basis'] * 100).\
-            where(pf['cum_size'] != 0)
+            where(pf['cum_size'] != 0).fillna(method='ffill')
 
         # assign to panelframe
         self.panelframe = pf
         return self
-
-    # USE empyrical instead
-    def stock_risk_analysis_legacy(self, risk_free_return=0):
-        """
-        Calculate monthly returns and run all main portfolio performance
-        calculations, such as mean returns, std, portfolio mean, std, beta, etc
-        References:
-        1. p. 137 of Modern Portfolio Theory and Investment Analysis
-        edition 9
-        2. faculty.washington.edu/ezivot/econ424/portfolioTheoryMatrix.pdf
-        -------------
-        Parameters:
-        - None
-        - Use only stock prices
-        Return:
-        - Dataframe of properties for each security in portfolio
-        """
-
-        # get monthly changes for all stocks
-        stock_monthly_change = self.stock_monthly_returns()
-
-        # get mean values and std by security
-        returns_mean = stock_monthly_change.mean(axis=0)
-        returns_std = stock_monthly_change.std(axis=0)
-        returns_var = stock_monthly_change.var(axis=0)
-
-        # get covariance matrix
-        returns_covar = np.cov(
-            stock_monthly_change.values, rowvar=False, ddof=1)
-
-        # get correlation matrix
-        std_products = np.dot(
-            returns_std.values.reshape(-1, 1),
-            returns_std.values.reshape(1, -1))
-        returns_corr = returns_covar / std_products
-
-        # get betas for each stock
-        stock_betas = np.round(returns_covar[-1] / returns_std['market']**2, 5)
-
-        # get alphas for each stock, ref. [1], convert to annual value
-        stock_alphas = returns_mean - stock_betas *\
-            (returns_mean['market'] - risk_free_return) -\
-            risk_free_return
-        stock_alphas = stock_alphas * 12
-
-        # construct dataframes with stock properties
-        df_stocks = pd.DataFrame({
-            'returns_mean': returns_mean,
-            'returns_var': returns_var,
-            'beta': stock_betas,
-            'alpha': stock_alphas
-        })
-
-        df_corr = pd.DataFrame(
-            returns_corr,
-            columns=returns_mean.keys(),
-            index=returns_mean.keys())
-
-        # use empyrical to get monthly returns for portfolio
-        ptf_monthly_returns = self.ptf_monthly_returns()
-        df_stocks.loc['portfolio', 'returns_mean'] = ptf_monthly_returns.mean()
-        df_stocks.loc['portfolio', 'returns_var'] = ptf_monthly_returns.var()
-
-        ptf_alpha_beta = emp.alpha_beta(
-            ptf_monthly_returns,
-            stock_monthly_change['market'],
-            period='monthly')
-        df_stocks.loc['portfolio', 'alpha'] = ptf_alpha_beta[0]
-        df_stocks.loc['portfolio', 'beta'] = ptf_alpha_beta[1]
-
-        return df_stocks, df_corr
 
     def stock_correlation_matrix(self):
         """
@@ -293,12 +225,131 @@ class PortfolioModels():
             returns_std.values.reshape(1, -1))
         returns_corr = returns_covar / std_products
 
+        df_covar = pd.DataFrame(
+            returns_covar,
+            columns=returns_mean.keys(),
+            index=returns_mean.keys())
+        df_covar = df_covar.iloc[:-2, :-2]
+
         df_corr = pd.DataFrame(
             returns_corr,
             columns=returns_mean.keys(),
             index=returns_mean.keys())
 
-        return df_corr
+        return df_corr, df_covar
+
+    def observed_period_portfolio_return(self, _):
+        """
+        Calculate actual portfolio return over observed period
+        """
+        pf = self.panelframe
+        ptf_return = pf['cum_total_return'].sum(1).iloc[-1] /\
+            pf['cum_cost_basis'].sum(1).iloc[-1]
+        return ptf_return
+
+    def observed_period_market_return(self, _):
+        """
+        Calculate actual market return over observed period
+        """
+        pf = self.panelframe
+        market_prices = pf['Close', :, 'market']
+        market_return = (market_prices[-1] - market_prices[0]) /\
+            market_prices[0]
+        return market_return
+
+    def actual_portfolio_stats(self):
+        """
+        Calculate actual portfolio stats based on panelframe with daily changes
+        -------------
+        Parameters:
+        - None
+        - Uses daily panelframe
+        Return:
+        - Series with portfolio stats
+        """
+        pf = self.panelframe
+        cum_returns = pf['cum_total_return'].sum(1)
+        returns = (cum_returns - cum_returns.shift(1)) /\
+            pf['cum_cost_basis'].sum(1)
+        returns.fillna(0, inplace=True)
+
+        market_gains =\
+            pf['Close', :, 'market'] - pf['Close', :, 'market'].shift(1)
+        market_returns = market_gains/pf['Close', :, 'market'].iloc[0]
+        market_returns.fillna(0, inplace=True)
+
+        """
+        Using empyrical functions
+        and re-using code from pyfolio
+        """
+
+        SIMPLE_STAT_FUNCS = [
+            self.observed_period_portfolio_return,
+            self.observed_period_market_return,
+            emp.annual_return,
+            emp.annual_volatility,
+            emp.sharpe_ratio,
+            emp.calmar_ratio,
+            emp.stability_of_timeseries,
+            emp.max_drawdown,
+            emp.omega_ratio,
+            emp.sortino_ratio,
+            stats.skew,
+            stats.kurtosis,
+            emp.tail_ratio,
+            emp.value_at_risk,
+        ]
+
+        FACTOR_STAT_FUNCS = [
+            emp.alpha,
+            emp.beta,
+        ]
+
+        STAT_FUNC_NAMES = {
+            'observed_period_portfolio_return': 'Total return',
+            'observed_period_market_return': 'Market return',
+            'annual_return': 'Annual return',
+            'cum_returns_final': 'Cumulative returns',
+            'annual_volatility': 'Annual volatility',
+            'sharpe_ratio': 'Sharpe ratio',
+            'calmar_ratio': 'Calmar ratio',
+            'stability_of_timeseries': 'Stability',
+            'max_drawdown': 'Max drawdown',
+            'omega_ratio': 'Omega ratio',
+            'sortino_ratio': 'Sortino ratio',
+            'skew': 'Skew',
+            'kurtosis': 'Kurtosis',
+            'tail_ratio': 'Tail ratio',
+            'value_at_risk': 'Daily value at risk',
+            'alpha': 'Alpha',
+            'beta': 'Beta',
+        }
+
+        ptf_stats = pd.Series()
+        for stat_func in SIMPLE_STAT_FUNCS:
+            ptf_stats[STAT_FUNC_NAMES[stat_func.__name__]] = stat_func(returns)
+
+        for stat_func in FACTOR_STAT_FUNCS:
+            res = stat_func(returns, market_returns)
+            ptf_stats[STAT_FUNC_NAMES[stat_func.__name__]] = res
+
+        return ptf_stats
+
+    # def pyfolio_stats(self):
+    #     """
+    #     """
+    #     pf = self.panelframe
+    #     cum_returns = pf['cum_total_return'].sum(1)
+    #     returns = (cum_returns - cum_returns.shift(1)) /\
+    #         pf['cum_cost_basis'].sum(1)
+    #     returns.index = returns.index.tz_localize('UTC')
+
+    #     positions = pf['cum_cost_basis'].iloc[:, :-1]
+    #     positions['cash'] = 0
+    #     positions.index = positions.index.tz_localize('UTC')
+
+    #     tear_sheet = pyf.create_full_tear_sheet(returns, positions)
+    #     return tear_sheet
 
     def stock_risk_analysis(self, if_risk_free_return=True):
         """
@@ -319,6 +370,7 @@ class PortfolioModels():
 
         # get monthly changes for all stocks
         stock_returns = self.stock_monthly_returns()
+        stock_returns['portfolio'] = self.ptf_monthly_returns()
 
         # get risk free return
         if if_risk_free_return:
@@ -336,22 +388,17 @@ class PortfolioModels():
             'returns_var': returns_var,
         })
 
+        # get alpha and beta
         df_stocks[['alpha', 'beta']] = stock_returns.\
             apply(lambda x: emp.alpha_beta(
                 x, stock_returns['market'],
                 risk_free_return, period='monthly')).\
             apply(pd.Series)
 
-        # use empyrical to get monthly returns for portfolio
-        ptf_monthly_returns = self.ptf_monthly_returns()
-        df_stocks.loc['portfolio', 'returns_mean'] = ptf_monthly_returns.mean()
-        df_stocks.loc['portfolio', 'returns_var'] = ptf_monthly_returns.var()
-
-        ptf_alpha_beta = emp.alpha_beta(
-            ptf_monthly_returns, stock_returns['market'],
-            risk_free_return, period='monthly')
-        df_stocks.loc['portfolio', 'alpha'] = ptf_alpha_beta[0]
-        df_stocks.loc['portfolio', 'beta'] = ptf_alpha_beta[1]
+        # get Sharpe ratio
+        df_stocks['sharpe'] = stock_returns.\
+            apply(lambda x: emp.sharpe_ratio(
+                x, risk_free_return, period='monthly'))
 
         return df_stocks
 
@@ -447,18 +494,20 @@ class PortfolioModels():
             stock_monthly_change * ptf_monthly_ratio).sum(1)
         return ptf_monthly_returns
 
-    def annual_returns(self):
-        """
-        Annualized returns for all stocks
-        -------------
-        Parameters:
-        - none
-        Returns:
-        - merge with other returns
-        """
-        return emp.annual_return(
-            self.stock_monthly_returns()/100, period='monthly')
+    # def portfolio_optimization(self):
+    #     stock_returns = self.stock_monthly_returns()
+    #     return None
 
+    # def ptf_daily_returns(self):
+    #     """
+    #     actual daily changes in portfolio
+    #     -------------
+    #     Parameters:
+    #     - none
+    #     - Using stock prices, portfolio weights on every day and div yield
+    #     Returns:
+    #     - dataframe with monthly returns in % by symbol
+    #     """
 
 if __name__ == '__main__':
     df_ord = pd.read_hdf('../data/data.h5', 'orders')
@@ -471,5 +520,7 @@ if __name__ == '__main__':
     pf = ptf.daily_portfolio_changes().panelframe
 
     # this section uses only stock prices, div yields and weights
-    df_risk = ptf.stock_risk_analysis(True)
-    df_corr = ptf.stock_correlation_matrix()
+    df_risk = ptf.stock_risk_analysis(False)
+    df_corr, df_cov = ptf.stock_correlation_matrix()
+
+    pf_stats = ptf.actual_portfolio_stats()
