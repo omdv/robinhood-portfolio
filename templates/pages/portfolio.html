@@ -15,12 +15,9 @@
       <td style="text-align: right">Robinhood data&nbsp;</td>
       <td>{{ rb_dates[0] | safe }} - {{ rb_dates[1] | safe }}</td>
       <td>
-        <form class="form-inline" action="/" method="POST">
-          <input type="hidden" name="refresh" value="robinhood">
-          {% if rb_dates[1] != today %}
-          <button class="refresh" type="submit"><i class="fa fa-refresh"></i></button>
-          {% endif %}
-        </form>
+        {% if rb_dates[1] != today %}
+        <button id="openLogin" class="refresh"><i class="fa fa-refresh"></i></button>
+        {% endif %}
       </td>
     </tr>
     <tr>
@@ -36,6 +33,22 @@
       </td>
     </tr>
   </table>
+  <!-- The Modal Login page-->
+  <div id="myModal" class="modal">
+    <!-- Modal content -->
+    <div class="modal-content">
+      <form class="form-signin" action="/" method="post">
+        <span class="close-modal">&times;</span>
+        <p>Log into Robinhood</p>
+        <label for="inputEmail" class="sr-only">Username</label>
+        <input type="text" name="inputUser" class="form-control" placeholder="Username" required autofocus>
+        <label for="inputPassword" class="sr-only">Password</label>
+        <input type="password" name="inputPassword" class="form-control" placeholder="Password" required>
+        <input type="hidden" name="refresh" value="robinhood">
+        <button class="btn btn-md btn-primary btn-block" type="submit">Download data</button>
+      </form>
+    </div>
+  </div>
 </div>
 <div class="section">
   <h2>Portfolio performance</h2>
@@ -69,11 +82,12 @@
   <h2>Efficient frontier</h2>
   <p>In this section we use the <a href="https://github.com/czielinski/portfolioopt">portfolio optimization</a> library to construct some of Markowitz portfolios. Using long positions only since Robinhood does not allow shorting.</p>
   {% for item in markowitz %}
-    <span>{{ item.name | safe }}</span>
-    <div class="row">
-      <div class="col-md-3">{{ item.weights | safe }}</div>
-      <div class="col-md-4">{{ item.stats | safe }}</div>
-    </div>
+  <span>{{ item.name | safe }}</span>
+  <div class="row">
+    <div class="col-md-3">{{ item.weights | safe }}</div>
+    <div class="col-md-4">{{ item.stats | safe }}</div>
+  </div>
   {% endfor %}
 </div>
+
 {% endblock %}

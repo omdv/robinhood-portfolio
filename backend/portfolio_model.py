@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 import empyrical as emp
 import portfolioopt as pfopt
-import pyfolio as pyf
 from scipy import stats
 
 
@@ -335,22 +334,6 @@ class PortfolioModels():
             ptf_stats[STAT_FUNC_NAMES[stat_func.__name__]] = res
 
         return ptf_stats
-
-    def pyfolio_stats(self):
-        """
-        """
-        pf = self.panelframe
-        cum_returns = pf['cum_total_return'].sum(1)
-        returns = (cum_returns - cum_returns.shift(1)) /\
-            pf['cum_cost_basis'].sum(1)
-        returns.index = returns.index.tz_localize('UTC')
-
-        positions = pf['cum_cost_basis'].iloc[:, :-1]
-        positions['cash'] = 0
-        positions.index = positions.index.tz_localize('UTC')
-
-        tear_sheet = pyf.create_full_tear_sheet(returns, positions)
-        return tear_sheet
 
     def stock_risk_analysis(self, if_risk_free_return=False):
         """

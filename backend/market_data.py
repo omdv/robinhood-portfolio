@@ -62,7 +62,8 @@ class MarketData:
 if __name__ == '__main__':
     print("Testing MarketData")
     md = MarketData(datafile='../data/data.h5')
-    pf = md._get_historical_prices(
-        ['SP500TR'],
-        pd.Timestamp("today")-pd.DateOffset(30),
-        pd.Timestamp("today")-pd.DateOffset(5))
+    df_ord = pd.read_hdf('../data/data.h5', 'orders')
+    pf = md.download_save_market_data(
+        df_ord.symbol.unique(),
+        df_ord.date.min(),
+        df_ord.date.max())

@@ -1,5 +1,4 @@
 import os
-import pandas as pd
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -85,13 +84,15 @@ def portfolio():
     plot_returns_svg = plot_returns(bc.portfolio['daily'])
 
     # handle update of market or robinhood data
-    if request.method == "POST":
-        updater = {
-            'market': bc.update_market_data,
-            'robinhood': bc.update_robinhood_data
-        }
-        updater[request.form["refresh"]]()
-        bc = bc.calculate_all()
+    if request.method == 'POST':
+        if request.form['refresh'] == 'market':
+            bc.update_market_data()
+        elif request.form['refresh'] == 'robinhood':
+            user = request.form['inputUser']
+            password = request.form['inputPassword']
+            bc.update_robinhood_data(user, password)
+
+    bc = bc.calculate_all()
 
     return render_template(
         'pages/portfolio.html',

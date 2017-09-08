@@ -96,11 +96,19 @@ class BackendClass(object):
         self.calculate_all()
         return self
 
-    def update_robinhood_data(self):
+    def update_robinhood_data(self, user, password):
         rd = RobinhoodData(self.datafile)
-        self._df_div, self._df_ord, _, _ = rd.download_robinhood_data()
+        self._df_div, self._df_ord, _, _ =\
+            rd.download_robinhood_data(user, password)
         self.user['rb_dates'] = [
             self._df_ord.date.min(), pd.Timestamp("today")]
+
+        '''
+        destroy RobinhoodData instance after download
+        to protect user information and delete token
+        '''
+        rd = 0
+
         self._pickle_user_dict()
         self.calculate_all()
         return self

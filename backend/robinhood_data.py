@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 from backend.robinhood_api import RobinhoodAPI
-from backend.auth import user, password
 
 
 class RobinhoodData:
@@ -15,7 +14,7 @@ class RobinhoodData:
     def __init__(self, datafile):
         self.datafile = datafile
 
-    def _login(self):
+    def _login(self, user, password):
         self.client = RobinhoodAPI()
         self.client.login(username=user, password=password)
         return self
@@ -175,8 +174,8 @@ class RobinhoodData:
 
         return df_open, df_closed
 
-    def download_robinhood_data(self):
-        self._login()
+    def download_robinhood_data(self, user, password):
+        self._login(user, password)
 
         df_div = self._process_dividends(self._download_dividends())
         df_div.to_hdf(self.datafile, 'dividends')
@@ -195,9 +194,21 @@ if __name__ == "__main__":
     rd = RobinhoodData('../data/data.h5')
 
     if False:
-        df_div, df_ord, df_open, df_closed = rd.download_robinhood_data()
+        df_div, df_ord, df_open, df_closed =\
+            rd.download_robinhood_data(None, None)
 
     df_div = pd.read_hdf('../data/data.h5', 'dividends')
     df_ord = pd.read_hdf('../data/data.h5', 'orders')
     df_open = pd.read_hdf('../data/data.h5', 'open')
     df_closed = pd.read_hdf('../data/data.h5', 'closed')
+
+    # trim data for github release
+    dates = ['2017-01-01', '2017-05-31']
+    for (df, name) in [
+        (df_div, 'dividends'),
+        (df_ord, 'orders'),
+        (df_open, 'open'),
+        (df_closed, 'closed')
+    ]:
+            df = df[(df.date >= dates[0]) & (df.date <= dates[1])]
+            df.to_hdf('../data/data.h5', name)
