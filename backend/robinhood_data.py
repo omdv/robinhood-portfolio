@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
-from robinhood_api import RobinhoodAPI
-from auth import user, password
+from backend.robinhood_api import RobinhoodAPI
+from backend.auth import user, password
 
 
 class RobinhoodData:
@@ -31,20 +31,9 @@ class RobinhoodData:
                 del df[col]
         return df
 
-    # download positions and all fields requiring RB client
-    def _download_positions(self):
-        positions = self.client.positions()
-        positions = [x for x in positions['results']]
-        df = pd.DataFrame(positions)
-        df['symbol'] = df['instrument'].apply(
-            self.client.get_symbol_by_instrument)
-        df['name'] = df['instrument'].apply(
-            self.client.get_name_by_instrument)
-        self.df_pos = self._delete_sensitive_fields(df)
-        return self
-
     # download orders and fields requiring RB client
     def _download_orders(self):
+        print("Downloading orders from Robinhood")
         orders = []
         past_orders = self.client.order_history()
         orders.extend(past_orders['results'])
@@ -57,11 +46,12 @@ class RobinhoodData:
             self.client.get_symbol_by_instrument)
         df.sort_values(by='created_at', inplace=True)
         df.reset_index(inplace=True, drop=True)
-        self.df_ord = self._delete_sensitive_fields(df)
-        return self
+        df_ord = self._delete_sensitive_fields(df)
+        return df_ord
 
     # download dividends and fields requiring RB client
     def _download_dividends(self):
+        print("Downloading dividends from Robinhood")
         dividends = self.client.dividends()
         dividends = [x for x in dividends['results']]
         df = pd.DataFrame(dividends)
@@ -69,22 +59,21 @@ class RobinhoodData:
             self.client.get_symbol_by_instrument)
         df.sort_values(by='paid_at', inplace=True)
         df.reset_index(inplace=True, drop=True)
-        self.df_div = self._delete_sensitive_fields(df)
-        return self
+        df_div = self._delete_sensitive_fields(df)
+        return df_div
 
     # process orders
-    def _process_orders(self):
+    def _process_orders(self, df_ord):
         # assign to df and reduce the number of fields
-        df = self.df_ord.copy()
+        df = df_ord.copy()
         fields = [
             'created_at',
-            'average_price', 'price', 'cumulative_quantity', 'fees',
+            'average_price', 'cumulative_quantity', 'fees',
             'symbol', 'side']
         df = df[fields]
 
         # convert types
-        for field in ['average_price', 'price',
-                      'cumulative_quantity', 'fees']:
+        for field in ['average_price', 'cumulative_quantity', 'fees']:
             df[field] = pd.to_numeric(df[field])
         for field in ['created_at']:
             df[field] = pd.to_datetime(df[field])
@@ -93,35 +82,23 @@ class RobinhoodData:
         df['date'] = df['created_at'].apply(
             lambda x: pd.tslib.normalize_date(x))
 
-        # quantity accounting for side of transaction
-        df['signed_quantity'] = np.where(
+        # rename columns for consistency
+        df.rename(columns={
+            'cumulative_quantity': 'current_size'
+        }, inplace=True)
+
+        # quantity accounting for side of transaction for cumsum later
+        df['signed_size'] = np.where(
             df.side == 'buy',
-            df['cumulative_quantity'],
-            -df['cumulative_quantity'])
-        df['signed_quantity'] = df['signed_quantity'].astype(np.int64)
+            df['current_size'],
+            -df['current_size'])
+        df['signed_size'] = df['signed_size'].astype(np.int64)
 
-        # calculate cost_basis at the moment of the order
-        df['cost_basis'] = df['signed_quantity'] * df['average_price']
-
-        # group by days
-        agg_func = {
-            'average_price': 'mean',
-            'price': 'mean',
-            'signed_quantity': 'sum',
-            'cumulative_quantity': 'sum',
-            'fees': 'sum',
-            'cost_basis': 'sum'}
-        df = df.groupby(['date', 'symbol'], as_index=False).agg(agg_func)
-
-        # cumsum by symbol
-        # df['total_quantity'] = df.groupby('symbol').signed_quantity.cumsum()
-        # df['total_cost_basis'] = df.groupby('symbol').cost_basis.cumsum()
-        self.df_ord = df
-        return self
+        return df
 
     # process_orders
-    def _process_dividends(self):
-        df = self.df_div.copy()
+    def _process_dividends(self, df_div):
+        df = df_div.copy()
 
         # convert types
         for field in ['amount', 'position', 'rate']:
@@ -132,27 +109,95 @@ class RobinhoodData:
         # add days
         df['date'] = df['paid_at'].apply(
             lambda x: pd.tslib.normalize_date(x))
-        self.df_div = df
-        return self
+        return df
+
+    def _generate_positions(self, df_ord):
+        """
+        Process orders dataframe and generate open and closed positions.
+        For all open positions close those which were later sold, so that
+        the cost_basis for open can be calculated correctly. For closed
+        positions calculate the cost_basis based on the closed open positions.
+        Note: the olders open positions are first to be closed. The logic here
+        is to reduce the tax exposure.
+        -----
+        Parameters:
+        - Pre-processed df_ord
+        Return:
+        - Two dataframes with open and closed positions correspondingly
+        """
+        # prepare dataframe for open and closed positions
+        df_open = df_ord[df_ord.side == 'buy'].copy()
+        df_closed = df_ord[df_ord.side == 'sell'].copy()
+
+        # create a new column for today's position size
+        # TODO: may be redundant - review later
+        df_open['final_size'] = df_open['current_size']
+        df_closed['final_size'] = df_closed['current_size']
+
+        # main loop
+        for i_closed, row_closed in df_closed.iterrows():
+            sell_size = row_closed.final_size
+            sell_cost_basis = 0
+            for i_open, row_open in df_open[
+                    (df_open.symbol == row_closed.symbol) &
+                    (df_open.date < row_closed.date)].iterrows():
+
+                new_sell_size = sell_size - df_open.loc[i_open, 'final_size']
+                new_sell_size = 0 if new_sell_size < 0 else new_sell_size
+
+                new_open_size = df_open.loc[i_open, 'final_size'] - sell_size
+                new_open_size = new_open_size if new_open_size > 0 else 0
+
+                # updating open positions
+                df_open.loc[i_open, 'final_size'] = new_open_size
+
+                # updating closed positions
+                df_closed.loc[i_closed, 'final_size'] = new_sell_size
+                sold_size = sell_size - new_sell_size
+                sell_cost_basis +=\
+                    df_open.loc[i_open, 'average_price'] * sold_size
+                sell_size = new_sell_size
+
+            # assign a cost_basis to the closed position
+            df_closed.loc[i_closed, 'current_cost_basis'] = -sell_cost_basis
+
+        # calculate cost_basis for open positions
+        df_open['current_cost_basis'] =\
+            df_open['current_size'] * df_open['average_price']
+        df_open['final_cost_basis'] =\
+            df_open['final_size'] * df_open['average_price']
+
+        # calculate capital gains for closed positions
+        df_closed['realized_gains'] =\
+            df_closed['current_size'] * df_closed['average_price'] +\
+            df_closed['current_cost_basis']
+        df_closed['final_cost_basis'] = 0
+
+        return df_open, df_closed
 
     def download_robinhood_data(self):
         self._login()
 
-        self._download_dividends()._process_dividends()
-        self._download_orders()._process_orders()
+        df_div = self._process_dividends(self._download_dividends())
+        df_div.to_hdf(self.datafile, 'dividends')
 
-        self.df_div.to_hdf(self.datafile, 'dividends')
-        self.df_ord.to_hdf(self.datafile, 'orders')
-        return (self.df_div, self.df_ord)
+        df_ord = self._process_orders(self._download_orders())
+        df_ord.to_hdf(self.datafile, 'orders')
+
+        df_open, df_closed = self._generate_positions(df_ord)
+        df_open.to_hdf(self.datafile, 'open')
+        df_closed.to_hdf(self.datafile, 'closed')
+
+        return df_div, df_ord, df_open, df_closed
 
 
 if __name__ == "__main__":
-    case = 'read'
+    rd = RobinhoodData('../data/data.h5')
 
-    if case == 'download':
-        rd = RobinhoodData('../data/data.h5')
-        df_div, df_ord = rd.download_robinhood_data()
+    if False:
+        df_div, df_ord, df_open, df_closed = rd.download_robinhood_data()
 
-    if case == 'read':
-        df_div = pd.read_hdf('../data/data.h5', 'dividends')
-        df_ord = pd.read_hdf('../data/data.h5', 'orders')
+    df_div = pd.read_hdf('../data/data.h5', 'dividends')
+    df_ord = pd.read_hdf('../data/data.h5', 'orders')
+    df_open = pd.read_hdf('../data/data.h5', 'open')
+    df_closed = pd.read_hdf('../data/data.h5', 'closed')

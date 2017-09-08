@@ -9,6 +9,11 @@ class MarketData:
     def __init__(self, datafile='', index='^spx'):
         self.datafile = datafile
         self.index = index
+        self._date_fmt = '{:%Y%m%d}'
+
+    # convert dates to required format
+    def _dates(self, date):
+        return self._date_fmt.format(date)
 
     # startDate, endDate in yyyymmdd format
     def _get_market_index(self, start_date, end_date):
@@ -32,18 +37,32 @@ class MarketData:
         return pf
 
     # return all stocks and index in one panel
-    def download_save_market_data(self, tickers, start_date, end_date):
+    def download_save_market_data(self, tickers, start_date, end_date,
+                                  update_existing=False):
+        start_date = self._date_fmt.format(start_date)
+        end_date = self._date_fmt.format(end_date)
         print("Downloading market data for {}-{}".format(start_date, end_date))
         pf = self._get_historical_prices(tickers, start_date, end_date)
         df = self._get_market_index(start_date, end_date)
         tb = self._get_treasury_yields(start_date, end_date)
-        pf.ix[:, :, 'market'] = df
-        pf.to_hdf(self.datafile, 'market')
-        tb.to_hdf(self.datafile, 'treasury_bills')
+        pf.loc[:, :, 'market'] = df
+        if update_existing:
+            new_dict = {}
+            pf_old = pd.read_hdf(self.datafile, 'market')
+            pf_new = pd.concat([pf_old, pf], axis=1)
+            for it in pf_new.items:
+                new_dict[it] = pf_new.loc[it].drop_duplicates().sort_index()
+            pf = pd.Panel(new_dict)
+        else:
+            pf.to_hdf(self.datafile, 'market')
+            tb.to_hdf(self.datafile, 'treasury_bills')
         return pf
 
 
 if __name__ == '__main__':
     print("Testing MarketData")
     md = MarketData(datafile='../data/data.h5')
-    md.download_market_data(['BND'], '20170701', '20170720')
+    pf = md._get_historical_prices(
+        ['SP500TR'],
+        pd.Timestamp("today")-pd.DateOffset(30),
+        pd.Timestamp("today")-pd.DateOffset(5))
