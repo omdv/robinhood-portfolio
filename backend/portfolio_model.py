@@ -7,6 +7,7 @@ import portfolioopt as pfopt
 import pyfolio as pyf
 from scipy import stats
 
+
 # calculating portfolio performance
 class PortfolioModels():
     def __init__(self, datafile):
@@ -208,8 +209,8 @@ class PortfolioModels():
         """
 
         # get monthly changes for all stocks
-        stock_returns = self.stock_monthly_returns()
-        stock_returns['portfolio'] = self.ptf_monthly_returns()
+        stock_returns = self._stock_monthly_returns()
+        stock_returns['portfolio'] = self._ptf_monthly_returns_indirect()
 
         # get mean values and std by security
         returns_mean = stock_returns.mean(axis=0)
@@ -238,7 +239,7 @@ class PortfolioModels():
 
         return df_corr, df_covar
 
-    def observed_period_portfolio_return(self, _):
+    def _observed_period_portfolio_return(self, _):
         """
         Calculate actual portfolio return over observed period
         """
@@ -247,7 +248,7 @@ class PortfolioModels():
             pf['cum_cost_basis'].sum(1).iloc[-1]
         return ptf_return
 
-    def observed_period_market_return(self, _):
+    def _observed_period_market_return(self, _):
         """
         Calculate actual market return over observed period
         """
@@ -275,8 +276,8 @@ class PortfolioModels():
 
         market_gains =\
             pf['Close', :, 'market'] - pf['Close', :, 'market'].shift(1)
-        market_returns = market_gains/pf['Close', :, 'market'].iloc[0]
-        market_returns.fillna(0, inplace=True)
+        market = market_gains/pf['Close', :, 'market'].iloc[0]
+        market.fillna(0, inplace=True)
 
         """
         Using empyrical functions
@@ -284,8 +285,8 @@ class PortfolioModels():
         """
 
         SIMPLE_STAT_FUNCS = [
-            self.observed_period_portfolio_return,
-            self.observed_period_market_return,
+            self._observed_period_portfolio_return,
+            self._observed_period_market_return,
             emp.annual_return,
             emp.annual_volatility,
             emp.sharpe_ratio,
@@ -306,23 +307,23 @@ class PortfolioModels():
         ]
 
         STAT_FUNC_NAMES = {
-            'observed_period_portfolio_return': 'Total return',
-            'observed_period_market_return': 'Market return',
+            '_observed_period_portfolio_return': 'Total return',
+            '_observed_period_market_return': 'Market return',
             'annual_return': 'Annual return',
             'cum_returns_final': 'Cumulative returns',
             'annual_volatility': 'Annual volatility',
+            'alpha': 'Alpha',
+            'beta': 'Beta',
             'sharpe_ratio': 'Sharpe ratio',
             'calmar_ratio': 'Calmar ratio',
             'stability_of_timeseries': 'Stability',
             'max_drawdown': 'Max drawdown',
             'omega_ratio': 'Omega ratio',
             'sortino_ratio': 'Sortino ratio',
-            'skew': 'Skew',
-            'kurtosis': 'Kurtosis',
             'tail_ratio': 'Tail ratio',
             'value_at_risk': 'Daily value at risk',
-            'alpha': 'Alpha',
-            'beta': 'Beta',
+            'skew': 'Skew',
+            'kurtosis': 'Kurtosis'
         }
 
         ptf_stats = pd.Series()
@@ -330,28 +331,28 @@ class PortfolioModels():
             ptf_stats[STAT_FUNC_NAMES[stat_func.__name__]] = stat_func(returns)
 
         for stat_func in FACTOR_STAT_FUNCS:
-            res = stat_func(returns, market_returns)
+            res = stat_func(returns, market)
             ptf_stats[STAT_FUNC_NAMES[stat_func.__name__]] = res
 
         return ptf_stats
 
-    # def pyfolio_stats(self):
-    #     """
-    #     """
-    #     pf = self.panelframe
-    #     cum_returns = pf['cum_total_return'].sum(1)
-    #     returns = (cum_returns - cum_returns.shift(1)) /\
-    #         pf['cum_cost_basis'].sum(1)
-    #     returns.index = returns.index.tz_localize('UTC')
+    def pyfolio_stats(self):
+        """
+        """
+        pf = self.panelframe
+        cum_returns = pf['cum_total_return'].sum(1)
+        returns = (cum_returns - cum_returns.shift(1)) /\
+            pf['cum_cost_basis'].sum(1)
+        returns.index = returns.index.tz_localize('UTC')
 
-    #     positions = pf['cum_cost_basis'].iloc[:, :-1]
-    #     positions['cash'] = 0
-    #     positions.index = positions.index.tz_localize('UTC')
+        positions = pf['cum_cost_basis'].iloc[:, :-1]
+        positions['cash'] = 0
+        positions.index = positions.index.tz_localize('UTC')
 
-    #     tear_sheet = pyf.create_full_tear_sheet(returns, positions)
-    #     return tear_sheet
+        tear_sheet = pyf.create_full_tear_sheet(returns, positions)
+        return tear_sheet
 
-    def stock_risk_analysis(self, if_risk_free_return=True):
+    def stock_risk_analysis(self, if_risk_free_return=False):
         """
         Calculate risk properties for every security in the portfolio
         using empyrical library.
@@ -368,41 +369,67 @@ class PortfolioModels():
         - Dataframe of properties for each security in portfolio
         """
 
-        # get monthly changes for all stocks
-        stock_returns = self.stock_monthly_returns()
-        stock_returns['portfolio'] = self.ptf_monthly_returns()
-
-        # get risk free return
-        if if_risk_free_return:
-            risk_free_return = self.risk_free_return()/12
-        else:
-            risk_free_return = 0
-
-        # get mean values and std by security
-        returns_mean = stock_returns.mean(axis=0)
-        returns_var = stock_returns.var(axis=0)
+        pf = self.panelframe
+        returns = (pf['Close'] - pf['Close'].shift(1))/pf['Close'].shift(1)
+        returns.fillna(0, inplace=True)
 
         # construct resulting dataframe
-        df_stocks = pd.DataFrame({
-            'returns_mean': returns_mean,
-            'returns_var': returns_var,
+        df = pd.DataFrame({
+            'means': returns.mean(axis=0),
         })
 
-        # get alpha and beta
-        df_stocks[['alpha', 'beta']] = stock_returns.\
-            apply(lambda x: emp.alpha_beta(
-                x, stock_returns['market'],
-                risk_free_return, period='monthly')).\
-            apply(pd.Series)
+        SIMPLE_STAT_FUNCS = [
+            emp.annual_return,
+            emp.annual_volatility,
+            emp.sharpe_ratio,
+            emp.calmar_ratio,
+            emp.stability_of_timeseries,
+            emp.max_drawdown,
+            emp.omega_ratio,
+            emp.sortino_ratio,
+            stats.skew,
+            stats.kurtosis,
+            emp.tail_ratio,
+            emp.value_at_risk,
+        ]
 
-        # get Sharpe ratio
-        df_stocks['sharpe'] = stock_returns.\
-            apply(lambda x: emp.sharpe_ratio(
-                x, risk_free_return, period='monthly'))
+        FACTOR_STAT_FUNCS = [
+            emp.alpha,
+            emp.beta,
+        ]
 
-        return df_stocks
+        STAT_FUNC_NAMES = {
+            'annual_return': 'Annual return',
+            'cum_returns_final': 'Cumulative returns',
+            'annual_volatility': 'Annual volatility',
+            'alpha': 'Alpha',
+            'beta': 'Beta',
+            'sharpe_ratio': 'Sharpe ratio',
+            'calmar_ratio': 'Calmar ratio',
+            'stability_of_timeseries': 'Stability',
+            'max_drawdown': 'Max drawdown',
+            'omega_ratio': 'Omega ratio',
+            'sortino_ratio': 'Sortino ratio',
+            'tail_ratio': 'Tail ratio',
+            'value_at_risk': 'Daily value at risk',
+            'skew': 'Skew',
+            'kurtosis': 'Kurtosis'
+        }
 
-    def risk_free_return(self, period='monthly'):
+        for stat_func in SIMPLE_STAT_FUNCS:
+            df[STAT_FUNC_NAMES[stat_func.__name__]] =\
+                returns.apply(lambda x: stat_func(x)).apply(pd.Series)
+
+        for stat_func in FACTOR_STAT_FUNCS:
+            df[STAT_FUNC_NAMES[stat_func.__name__]] =\
+                returns.apply(lambda x: stat_func(
+                    x, returns['market'])).apply(pd.Series)
+
+        del df['means']
+
+        return df
+
+    def _risk_free_return(self, period='monthly'):
         """
         Risk free return based on T-bills.
         -------------
@@ -419,13 +446,12 @@ class PortfolioModels():
         }
         return tb[TBILLS_PERIODS[period]].mean()
 
-    def stock_monthly_capital_gain(self):
+    def _stock_monthly_returns(self):
         """
-        Monthly capital gain for all stocks, market index and portfolio
+        Monthly returns = capital gain + dividend yields for all symbols
         -------------
         Parameters:
         - none
-        - Using stock prices
         Returns:
         - dataframe with monthly returns in % by symbol
         """
@@ -442,39 +468,14 @@ class PortfolioModels():
         stock_monthly_return = (stock_month_end - stock_month_start) /\
             stock_month_start * 100
 
-        return stock_monthly_return
-
-    def stock_monthly_div(self):
-        """
-        Monthly dividend yield in %
-        Note that div are accounted for only if position existed
-        TODO: add a div payout dataframe
-        -------------
-        Parameters:
-        - none
-        - Using dividend yield
-        Returns:
-        - dataframe with monthly dividend yield in $ by symbol
-        """
-        pf = self.panelframe
         stock_monthly_div_yield = pf['dividend_yield'].groupby([
             lambda x: x.year,
             lambda x: x.month]).mean()
         stock_monthly_div_yield.fillna(0, inplace=True)
-        return stock_monthly_div_yield
 
-    def stock_monthly_returns(self):
-        """
-        Monthly returns = capital gain + dividend yields for all symbols
-        -------------
-        Parameters:
-        - none
-        Returns:
-        - dataframe with monthly returns in % by symbol
-        """
-        return self.stock_monthly_capital_gain() + self.stock_monthly_div()
+        return stock_monthly_return + stock_monthly_div_yield
 
-    def ptf_monthly_returns(self):
+    def _ptf_monthly_returns_indirect(self):
         """
         monthly changes in portfolio value
         using indirect calculation with mean ratios
@@ -486,7 +487,7 @@ class PortfolioModels():
         Returns:
         - dataframe with monthly returns in % by symbol
         """
-        stock_monthly_change = self.stock_monthly_returns()
+        stock_monthly_change = self._stock_monthly_returns()
         ptf_monthly_ratio = self.panelframe['current_weight'].groupby([
             lambda x: x.year,
             lambda x: x.month]).mean()
@@ -494,20 +495,94 @@ class PortfolioModels():
             stock_monthly_change * ptf_monthly_ratio).sum(1)
         return ptf_monthly_returns
 
-    # def portfolio_optimization(self):
-    #     stock_returns = self.stock_monthly_returns()
-    #     return None
+    def _one_pfopt_case(self, cov_mat, stock_returns, market, weights, name):
+        case = {}
+        case['name'] = name
+        case['weights'] = weights
 
-    # def ptf_daily_returns(self):
-    #     """
-    #     actual daily changes in portfolio
-    #     -------------
-    #     Parameters:
-    #     - none
-    #     - Using stock prices, portfolio weights on every day and div yield
-    #     Returns:
-    #     - dataframe with monthly returns in % by symbol
-    #     """
+        returns = np.dot(stock_returns, weights.values.reshape(-1, 1))
+        returns = pd.Series(returns.flatten(), index=market.index)
+
+        SIMPLE_STAT_FUNCS = [
+            emp.annual_return,
+            emp.annual_volatility,
+            emp.sharpe_ratio,
+            emp.stability_of_timeseries,
+            emp.max_drawdown,
+            emp.omega_ratio,
+            emp.calmar_ratio,
+            emp.sortino_ratio,
+            emp.value_at_risk,
+        ]
+
+        FACTOR_STAT_FUNCS = [
+            emp.alpha,
+            emp.beta,
+        ]
+
+        STAT_FUNC_NAMES = {
+            'annual_return': 'Annual return',
+            'annual_volatility': 'Annual volatility',
+            'alpha': 'Alpha',
+            'beta': 'Beta',
+            'sharpe_ratio': 'Sharpe ratio',
+            'calmar_ratio': 'Calmar ratio',
+            'stability_of_timeseries': 'Stability',
+            'max_drawdown': 'Max drawdown',
+            'omega_ratio': 'Omega ratio',
+            'sortino_ratio': 'Sortino ratio',
+            'value_at_risk': 'Daily value at risk',
+        }
+
+        ptf_stats = pd.Series()
+        for stat_func in SIMPLE_STAT_FUNCS:
+            ptf_stats[STAT_FUNC_NAMES[stat_func.__name__]] = stat_func(returns)
+
+        for stat_func in FACTOR_STAT_FUNCS:
+            res = stat_func(returns, market)
+            ptf_stats[STAT_FUNC_NAMES[stat_func.__name__]] = res
+
+        case['stats'] = ptf_stats
+
+        return case
+
+    def markowitz_portfolios(self):
+        pf = self.panelframe
+        returns = (pf['Close'] - pf['Close'].shift(1))/pf['Close'].shift(1)
+        returns.fillna(0, inplace=True)
+        market = returns['market']
+        returns = returns.iloc[:, :-1]
+
+        cov_mat = np.cov(returns, rowvar=False, ddof=1)
+        cov_mat = pd.DataFrame(
+            cov_mat,
+            columns=returns.keys(),
+            index=returns.keys())
+
+        avg_rets = returns.mean(0).astype(np.float64)
+
+        mrk = []
+
+        weights = pfopt.min_var_portfolio(cov_mat)
+        case = self._one_pfopt_case(
+            cov_mat, returns, market, weights, 'Minimum variance portfolio')
+        mrk.append(case)
+
+        for t in [0.50, 0.75, 0.90]:
+            target = avg_rets.quantile(t)
+            weights = pfopt.markowitz_portfolio(cov_mat, avg_rets, target)
+            case = self._one_pfopt_case(
+                cov_mat, returns, market, weights,
+                'Target: more than {:.0f}% of stock returns'.format(t*100))
+            mrk.append(case)
+
+        weights = pfopt.tangency_portfolio(cov_mat, avg_rets)
+        case = self._one_pfopt_case(
+            cov_mat, returns, market, weights, 'Tangency portfolio')
+        mrk.append(case)
+
+        return mrk
+
 
 if __name__ == '__main__':
     df_ord = pd.read_hdf('../data/data.h5', 'orders')
@@ -522,5 +597,5 @@ if __name__ == '__main__':
     # this section uses only stock prices, div yields and weights
     df_risk = ptf.stock_risk_analysis(False)
     df_corr, df_cov = ptf.stock_correlation_matrix()
-
     pf_stats = ptf.actual_portfolio_stats()
+    mrk = ptf.markowitz_portfolios()

@@ -31,20 +31,9 @@ class RobinhoodData:
                 del df[col]
         return df
 
-    # download positions and all fields requiring RB client
-    def _download_positions(self):
-        positions = self.client.positions()
-        positions = [x for x in positions['results']]
-        df = pd.DataFrame(positions)
-        df['symbol'] = df['instrument'].apply(
-            self.client.get_symbol_by_instrument)
-        df['name'] = df['instrument'].apply(
-            self.client.get_name_by_instrument)
-        df_pos = self._delete_sensitive_fields(df)
-        return df_pos
-
     # download orders and fields requiring RB client
     def _download_orders(self):
+        print("Downloading orders from Robinhood")
         orders = []
         past_orders = self.client.order_history()
         orders.extend(past_orders['results'])
@@ -62,6 +51,7 @@ class RobinhoodData:
 
     # download dividends and fields requiring RB client
     def _download_dividends(self):
+        print("Downloading dividends from Robinhood")
         dividends = self.client.dividends()
         dividends = [x for x in dividends['results']]
         df = pd.DataFrame(dividends)
@@ -198,18 +188,16 @@ class RobinhoodData:
         df_open.to_hdf(self.datafile, 'open')
         df_closed.to_hdf(self.datafile, 'closed')
 
-        return (df_div, df_ord, df_open, df_closed)
+        return df_div, df_ord, df_open, df_closed
 
 
 if __name__ == "__main__":
-    case = 'read'
     rd = RobinhoodData('../data/data.h5')
 
-    if case == 'download':
+    if False:
         df_div, df_ord, df_open, df_closed = rd.download_robinhood_data()
 
-    if case == 'read':
-        df_div = pd.read_hdf('../data/data.h5', 'dividends')
-        df_ord = pd.read_hdf('../data/data.h5', 'orders')
-        df_open = pd.read_hdf('../data/data.h5', 'open')
-        df_closed = pd.read_hdf('../data/data.h5', 'closed')
+    df_div = pd.read_hdf('../data/data.h5', 'dividends')
+    df_ord = pd.read_hdf('../data/data.h5', 'orders')
+    df_open = pd.read_hdf('../data/data.h5', 'open')
+    df_closed = pd.read_hdf('../data/data.h5', 'closed')
