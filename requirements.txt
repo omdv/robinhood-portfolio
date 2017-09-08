@@ -1,0 +1,2 @@
+requests
+https://github.com/quantopian/empyrical
