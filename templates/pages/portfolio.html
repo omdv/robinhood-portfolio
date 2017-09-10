@@ -9,7 +9,7 @@
   <h2>Introduction</h2>
   <p>This tool uses the <a href="https://github.com/Jamonek/Robinhood">unofficial Robinhood API</a> to download the history of orders and dividends of your Robinhood account. Since there is no official Robinhood API using oauth you need to enter your account information and temporarily disable the two-factor authentication to download the data. The script runs locally and does not save your account information - feel free to verify/fork the source code. It is your responsibility to make sure that your account is safe.</p>
   <p>It also needs the market data for securities you traded, including the history of the market index such as <a href="https://en.wikipedia.org/wiki/S%26P_500_Index">S&P 500</a> which is used as the benchmark. This data is downloaded from open sources, so please use it responsibly and do not spam requests as you may get banned, or worse, prevent others from using it as well.</p>
-  <p><strong>Refresh to download the Robinhood data first. The market data will be downloaded only for the corresponding securities and dates.</strong></p>
+  <p>If you choose to refresh the Robinhood data the market data will be downloaded automatically for the corresponding securities and dates. Alternatively you can refresh only market data if you didn't have any new Robinhood transactions recently.</p>
   <table style="margin:1em auto;">
     <tr>
       <td style="text-align: right">Robinhood data&nbsp;</td>
@@ -52,18 +52,18 @@
 </div>
 <div class="section">
   <h2>Portfolio performance</h2>
-  <p>Below is the summary of your portfolio performance starting from {{ rb_dates[0] | safe }} to {{ rb_dates[1] | safe }}. It consists of <a href="http://www.investopedia.com/terms/r/realizedprofit.asp">realized gains</a> which are the results of position liquidations by sell orders, dividend payouts and <a href="http://www.investopedia.com/terms/u/unrealizedgain.asp">unrealized gains</a> from the remaining long positions.</p>
+  <p>Below is the summary of your portfolio performance starting from {{ mkt_dates[0] | safe }} to {{ mkt_dates[1] | safe }}. It consists of <a href="http://www.investopedia.com/terms/r/realizedprofit.asp">realized gains</a> which are the results of position liquidations by sell orders, dividend payouts and <a href="http://www.investopedia.com/terms/u/unrealizedgain.asp">unrealized gains</a> from the remaining long positions.</p>
   {{ portfolio["returns"] | safe}}
   <div class="plot-wrapper">
     {{ plot_returns_svg | safe }}
   </div>
-  <p>The total return rate of the portfolio is {{ portfolio["total_return"] | safe }} or {{ portfolio["annual_return"] | safe }} annualized. The market index gained {{ portfolio["market_return"] | safe}} during the same period.</p>
+  <p>The total return rate of the portfolio is {{ portfolio["total_return"] | safe }} or {{ portfolio["annual_return"] | safe }} annualized. The market index gained {{ portfolio["market_return"] | safe}} during the same period, not including dividends.</p>
   <p>Portfolio metric presented below is calculated based on the <strong>daily</strong> returns and using S&P 500 index as the benchmark with risk-free daily return rate set to 0%.</p>
   {{ portfolio["stats"] | safe }}
 </div>
 <div class="section">
   <h2>Trades</h2>
-  <p>There are {{ trades["open_orders"] | safe }} buy orders and {{ trades["closed_orders"] | safe }} sell orders, resulting in ${{ trades["fees"] | safe }} of brokerage fees. Below is the summary of the best and worst (by absolute amount) closed and open positions.</p>
+  <p>You placed {{ trades["open_orders"] | safe }} buy orders and {{ trades["closed_orders"] | safe }} sell orders, resulting in ${{ trades["fees"] | safe }} of brokerage fees. Below is the summary of the best and worst (by absolute amount) closed and open positions.</p>
   {{trades["closed"] | safe}}
   {{trades["open"] | safe}}
   <span><a href="javascript:toggleVisibility('.dataframe.orders')">Toggle all orders</a></span>
@@ -71,7 +71,7 @@
 </div>
 <div class="section">
   <h2>Risk analysis</h2>
-  <p>This section presents the risk metric for every individual asset. Calculations are based on daily returns <strong>and do not include dividends.</strong></p>
+  <p>This section presents the risk metric for every individual asset. Calculations are based on daily returns and do not include dividends.</p>
   <p>The chart below shows the <a href="https://en.wikipedia.org/wiki/Pearson_correlation_coefficient">correlation coefficients</a>. The table shows the risk metric for individual securities.</p>
   <div class="plot-wrapper">
     {{ plot_corr_svg | safe }}
@@ -80,7 +80,7 @@
 </div>
 <div class="section">
   <h2>Efficient frontier</h2>
-  <p>In this section we use the <a href="https://github.com/czielinski/portfolioopt">portfolio optimization</a> library to construct some of Markowitz portfolios. Using long positions only since Robinhood does not allow shorting.</p>
+  <p>In this section we use the <a href="https://github.com/czielinski/portfolioopt">portfolio optimization</a> library to construct some of Markowitz portfolios. It uses long positions only as Robinhood does not support short selling.</p>
   {% for item in markowitz %}
   <span>{{ item.name | safe }}</span>
   <div class="row">

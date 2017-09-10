@@ -34,9 +34,9 @@ def plot_returns(data):
         ticker.FuncFormatter(lambda x, p: '${:.0f}'.format(x)))
 
     # format dates
-    months_ticks = mdates.MonthLocator()  # every month
+    # months_ticks = mdates.MonthLocator()  # every month
     date_fmt = mdates.DateFormatter('%b-%Y')
-    ax.xaxis.set_major_locator(months_ticks)
+    # ax.xaxis.set_major_locator(months_ticks)
     ax.xaxis.set_major_formatter(date_fmt)
 
     ax.grid(False, axis='both', linestyle='-', linewidth=0.5, color="#deebf7")

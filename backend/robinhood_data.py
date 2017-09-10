@@ -19,11 +19,9 @@ class RobinhoodData:
         # try import the module with passwords
         try:
             _temp = __import__('auth')
-            user = _temp.local_user
-            password = _temp.local_password
+            self.client.login(_temp.local_user, _temp.local_password)
         except:
-            None
-        self.client.login(username=user, password=password)
+            self.client.login(username=user, password=password)
         return self
 
     # private method for getting all orders

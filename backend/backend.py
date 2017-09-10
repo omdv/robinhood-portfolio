@@ -44,10 +44,16 @@ class BackendClass(object):
             self.user['rb_dates'] = [
                 self._df_ord.date.min(),
                 max(self._df_ord.date.max(), self._df_div.date.max())]
+
+            '''
             # check the dates for market data
             self.user['mkt_dates'] = [
                 self._market.major_axis.min(),
                 self._market.major_axis.max()]
+            '''
+            # use the fresh start for market when pickle is deleted
+            self.update_market_data(fresh_start=True)
+
             # get today date
             self.user['today'] = pd.Timestamp("today")
             # pickle the dictionary
@@ -110,6 +116,7 @@ class BackendClass(object):
         rd = 0
 
         self._pickle_user_dict()
+        self.update_market_data()
         self.calculate_all()
         return self
 
@@ -124,18 +131,20 @@ class BackendClass(object):
     def _get_latest_portfolio_snapshot(self):
         # use only the last row
         df = self._panel.iloc[:, -1, :-1]
-        columns = [
-            'cum_size',
-            'current_weight',
-            'cum_cost_basis',
-            'cum_value',
-            'cum_realized_gain',
-            'cum_dividends',
-            'cum_unrealized_gain',
-            'cum_total_return',
-            'current_return_rate'
-        ]
-        df = df[columns]
+
+        columns_to_names = {
+            'cum_size': 'Shares',
+            'current_weight': 'Portfolio weight',
+            'cum_cost_basis': 'Current cost basis',
+            'cum_value_close': 'Current value',
+            'cum_realized_gain': 'Realized gain',
+            'cum_dividends': 'Dividends',
+            'cum_unrealized_gain': 'Unrealized gain',
+            'cum_total_return': 'Total return',
+            'current_return_rate': 'Total return rate'
+        }
+
+        df = df[list(columns_to_names.keys())]
         # convert ratios to percent
         df['current_weight'] = df['current_weight'] * 100
 
@@ -147,17 +156,7 @@ class BackendClass(object):
             df.loc['Portfolio', 'cum_cost_basis'] * 100
 
         # rename for HTML
-        df.rename(columns={
-            'cum_size': 'Shares',
-            'cum_cost_basis': 'Current cost basis',
-            'cum_dividends': 'Dividends',
-            'cum_value': 'Current value',
-            'current_weight': 'Portfolio weight',
-            'cum_unrealized_gain': 'Unrealized gain',
-            'cum_realized_gain': 'Realized gain',
-            'cum_total_return': 'Total return',
-            'current_return_rate': 'Return rate'
-        }, inplace=True)
+        df.rename(columns=columns_to_names, inplace=True)
 
         def highlight_summary_row():
             return None
@@ -174,7 +173,7 @@ class BackendClass(object):
                 'Unrealized gain': '{:,.2f}',
                 'Realized gain': "{:,.2f}",
                 'Total return': "{:,.2f}",
-                'Return rate': '{:.2f} %'
+                'Total return rate': '{:.2f} %'
             }).\
             render()
 

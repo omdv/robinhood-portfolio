@@ -2,6 +2,7 @@ import getpass
 import json
 import requests
 
+
 class RobinhoodAPI:
 
     endpoints = {
@@ -67,7 +68,7 @@ class RobinhoodAPI:
     def login(self, username, password):
         self.username = username
         self.password = password
-        data = {"password" : self.password, "username" : self.username}
+        data = {"password": self.password, "username": self.username}
         res = self.session.post(self.endpoints['login'], data=data)
         res = res.json()
         try:
@@ -116,63 +117,66 @@ class RobinhoodAPI:
     def get_name_by_instrument(self, url=None):
         return requests.get(url).json()['name']
 
-    def get_historical_quotes(self,symbol,interval,span,bounds='regular'):
+    def get_historical_quotes(self, symbol, interval, span, bounds='regular'):
         # Valid combination
         # interval = 5minute | 10minute + span = day, week
         # interval = day + span = year
         # interval = week
         # bounds can be 'regular' for regular hours or 'extended' for extended hours
-        res = self.session.get(self.endpoints['historicals'],\
-            params={'symbols':','.join(symbol).upper(),\
-            'interval':interval, 'span':span, 'bounds':bounds})
+        res = self.session.get(
+            self.endpoints['historicals'],
+            params={
+                'symbols': ','.join(symbol).upper(),
+                'interval': interval, 'span': span, 'bounds': bounds
+            })
         return res.json()
-        
+
     def get_news(self, symbol):
         return self.session.get(self.endpoints['news']+symbol.upper()+"/").json()
 
     def print_quote(self, stock=None):
         data = self.quote_data(stock)
-        print(data["symbol"] + ": $" + data["last_trade_price"]);
+        print(data["symbol"] + ": $" + data["last_trade_price"])
 
     def print_quotes(self, stocks):
         for i in range(len(stocks)):
-            self.print_quote(stocks[i]);
+            self.print_quote(stocks[i])
 
     def ask_price(self, stock=None):
-        return float(self.quote_data(stock)['ask_price']);
+        return float(self.quote_data(stock)['ask_price'])
 
     def ask_size(self, stock=None):
-        return float(self.quote_data(stock)['ask_size']);
+        return float(self.quote_data(stock)['ask_size'])
 
     def bid_price(self, stock=None):
-        return float(self.quote_data(stock)['bid_price']);
+        return float(self.quote_data(stock)['bid_price'])
 
     def bid_size(self, stock=None):
-        return float(self.quote_data(stock)['bid_size']);
+        return float(self.quote_data(stock)['bid_size'])
 
     def last_trade_price(self, stock=None):
-        return float(self.quote_data(stock)['last_trade_price']);
+        return float(self.quote_data(stock)['last_trade_price'])
 
     def previous_close(self, stock=None):
-        return float(self.quote_data(stock)['previous_close']);
+        return float(self.quote_data(stock)['previous_close'])
 
     def previous_close_date(self, stock=None):
-        return self.quote_data(stock)['previous_close_date'];
+        return self.quote_data(stock)['previous_close_date']
 
     def adjusted_previous_close(self, stock=None):
-        return float(self.quote_data(stock)['adjusted_previous_close']);
+        return float(self.quote_data(stock)['adjusted_previous_close'])
 
     def symbol(self, stock=None):
-        return self.quote_data(stock)['symbol'];
+        return self.quote_data(stock)['symbol']
 
     def last_updated_at(self, stock=None):
-        return self.quote_data(stock)['updated_at'];
-    
+        return self.quote_data(stock)['updated_at']
+
     def get_account(self):
         res = self.session.get(self.endpoints['accounts'])
         res = res.json()
         return res['results'][0]
-        
+
     def get_url(self,url):
         return self.session.get(url).json()
 
@@ -182,7 +186,7 @@ class RobinhoodAPI:
 
     def portfolios(self):
         """Returns the user's portfolio data."""
-        return self.session.get(\
+        return self.session.get(
             self.endpoints['portfolios']).json()['results'][0]
 
     def adjusted_equity_previous_close(self):
@@ -236,6 +240,6 @@ class RobinhoodAPI:
         for position in positions['results']:
             quantity = float(position['quantity'])
             if quantity > 0:
-                securities.append(\
+                securities.append(
                     self.session.get(position['instrument']).json()['symbol'])
         return securities

@@ -171,19 +171,28 @@ class PortfolioModels():
         # dividend yield
         pf['dividend_yield'] = pf['dividend_rate'] / pf['Close'] * 100
 
-        # cumulative current value of the position for the given security
-        pf['cum_value'] = pf['cum_size'] * pf['Close']
+        '''
+        cumulative current value of the position for the given security
+        at the start and end of the day
+        '''
+        pf['cum_value_close'] = pf['cum_size'] * pf['Close']
+        pf['cum_value_open'] = pf['cum_size'] * pf['Open']
 
         # current weight of the given security in the portfolio - matrix
+        # based on the close price
         pf['current_weight'] =\
-            (pf['cum_value'].T / pf['cum_value'].sum(axis=1)).T
+            (pf['cum_value_close'].T / pf['cum_value_close'].sum(axis=1)).T
 
-        # unrealized gain on open positions
-        pf['cum_unrealized_gain'] = pf['cum_value'] - pf['cum_cost_basis']
+        # unrealized gain on open positions at the end of day
+        pf['cum_unrealized_gain'] =\
+            pf['cum_value_close'] - pf['cum_cost_basis']
 
-        # capital gain on closed positions
+        # total return
         pf['cum_total_return'] = pf['cum_unrealized_gain'] +\
             pf['cum_dividends'] + pf['cum_realized_gain']
+
+        # return from price change only
+        pf['cum_price_return'] = pf['cum_unrealized_gain']
 
         # calculate ROI
         pf['current_return_rate'] =\
@@ -270,14 +279,16 @@ class PortfolioModels():
         - Series with portfolio stats
         """
         pf = self.panelframe
-        cum_returns = pf['cum_total_return'].sum(1)
-        returns = (cum_returns - cum_returns.shift(1).fillna(0)) /\
-            pf['cum_cost_basis'].sum(1)
+        return_to_use = 'cum_total_return'
+        cum_return_D1 = pf[return_to_use].sum(1).shift(1)
+        cum_return_D2 = pf[return_to_use].sum(1)
+        cost_basis = pf['cum_cost_basis'].sum(1)
+        returns = (cum_return_D2 - cum_return_D1) / cost_basis
         returns.fillna(0, inplace=True)
 
-        market_gains =\
-            pf['Close', :, 'market'] - pf['Close', :, 'market'].shift(1)
-        market = market_gains/pf['Close', :, 'market'].iloc[0]
+        m_D1 = pf['Close', :, 'market'].shift(1)
+        m_D2 = pf['Close', :, 'market']
+        market = (m_D2 - m_D1) / pf['Close', :, 'market'].iloc[0]
         market.fillna(0, inplace=True)
 
         """
@@ -355,7 +366,7 @@ class PortfolioModels():
         """
 
         pf = self.panelframe
-        returns = (pf['Close'] - pf['Close'].shift(1))/pf['Close'].shift(1)
+        returns = (pf['Close'] - pf['Close'].shift(1))/pf['Close'].iloc[0]
         returns.fillna(0, inplace=True)
 
         # construct resulting dataframe
