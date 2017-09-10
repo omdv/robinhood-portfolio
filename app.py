@@ -3,6 +3,7 @@ import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
+import matplotlib.dates as mdates
 from flask import Flask, render_template, request
 from backend.backend import BackendClass
 from io import BytesIO
@@ -27,8 +28,17 @@ def plot_returns(data):
     ax.plot(x, y, linewidth=1.0, color='#2c7fb8')
     ax.axhline(y=0, color='#e34a33', linestyle='-', linewidth=0.5)
     ax.set_ylabel("Portfolio returns")
+
+    # format y-axis
     ax.get_yaxis().set_major_formatter(
         ticker.FuncFormatter(lambda x, p: '${:.0f}'.format(x)))
+
+    # format dates
+    months_ticks = mdates.MonthLocator()  # every month
+    date_fmt = mdates.DateFormatter('%b-%Y')
+    ax.xaxis.set_major_locator(months_ticks)
+    ax.xaxis.set_major_formatter(date_fmt)
+
     ax.grid(False, axis='both', linestyle='-', linewidth=0.5, color="#deebf7")
 
     # saving and exporting the svg
