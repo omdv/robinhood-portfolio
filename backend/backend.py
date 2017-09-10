@@ -133,18 +133,17 @@ class BackendClass(object):
         df = self._panel.iloc[:, -1, :-1]
 
         columns_to_names = {
-            'cum_size': 'Shares',
-            'current_weight': 'Portfolio weight',
-            'cum_cost_basis': 'Current cost basis',
-            'cum_value_close': 'Current value',
-            'cum_realized_gain': 'Realized gain',
-            'cum_dividends': 'Dividends',
-            'cum_unrealized_gain': 'Unrealized gain',
-            'cum_total_return': 'Total return',
-            'current_return_rate': 'Total return rate'
+            'cum_size': ['Shares', '{:,.0f}'],
+            'current_weight': ['Portfolio weight', '{:.2f}'],
+            'cum_cost_basis': ['Current cost basis', '{:,.2f}'],
+            'cum_value_close': ['Current value', '{:,.2f}'],
+            'cum_realized_gain': ['Realized gain', '{:,.2f}'],
+            'cum_dividends': ['Dividends', '{:,.2f}'],
+            'cum_unrealized_gain': ['Unrealized gain', '{:,.2f}'],
+            'cum_total_return': ['Total return', '{:,.2f}'],
+            'current_return_rate': ['Total return rate', '{:,.2f}%']
         }
 
-        df = df[list(columns_to_names.keys())]
         # convert ratios to percent
         df['current_weight'] = df['current_weight'] * 100
 
@@ -155,26 +154,20 @@ class BackendClass(object):
             df.loc['Portfolio', 'cum_total_return'] /\
             df.loc['Portfolio', 'cum_cost_basis'] * 100
 
-        # rename for HTML
-        df.rename(columns=columns_to_names, inplace=True)
+        # re-order
+        df = df[list(columns_to_names.keys())]
 
-        def highlight_summary_row():
-            return None
+        # format
+        df = df.apply(
+            lambda x: x.map(columns_to_names[x.name][1].format), axis=0)
+
+        # rename for HTML
+        df.columns =\
+            df.columns.to_series().apply(lambda x: columns_to_names[x][0])
 
         # apply styles
         self.portfolio['returns'] = df.style.\
             set_table_attributes('border=1 class="dataframe"').\
-            format({
-                'Shares': '{:,.0f}',
-                'Current cost basis': '{:,.2f}',
-                'Dividends': '{:,.2f}',
-                'Current value': '{:,.2f}',
-                'Portfolio weight': '{:.2f}',
-                'Unrealized gain': '{:,.2f}',
-                'Realized gain': "{:,.2f}",
-                'Total return': "{:,.2f}",
-                'Total return rate': '{:.2f} %'
-            }).\
             render()
 
         return self
