@@ -33,6 +33,10 @@ Based on unofficial [robinhood-api](https://github.com/Jamonek/Robinhood) and se
 ### Docker container
 Coming soon...
 
+### Jupyter notebook
+Coming soon...
+
+
 ------------------
 
 # Related

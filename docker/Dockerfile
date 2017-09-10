@@ -1,4 +1,4 @@
-FROM ubuntu:16.04
+FROM blitznote/debootstrap-amd64:16.04
 
 RUN apt-get update && \
     apt-get install -y \
@@ -7,8 +7,6 @@ RUN apt-get update && \
     pip3 install --upgrade setuptools
 
 RUN git clone https://github.com/omdv/robinhood-portfolio && \
-	cd robinhood-portfolio && \
-	pip3 install -r requirements.txt
+	pip3 install -r robinhood-portfolio/requirements.txt
 
-CMD cd robinhood-portfolio && \
-	python3 app.py
+CMD cd robinhood-portfolio && python3 app.py

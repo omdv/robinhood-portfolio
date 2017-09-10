@@ -136,8 +136,10 @@ class PortfolioModels():
         pf = self._merge_market_with_orders(df_ord, pf)
         pf = self._merge_market_with_dividends(df_div, pf)
 
-        # replace null stock prices using backfill to avoid issues with
-        # Daily_change and beta calculations
+        '''
+        replace null stock prices using backfill to avoid issues with
+        daily_change and beta calculations
+        '''
         close_price = pf['Close']
         close_price.values[close_price.values == 0] = np.nan
         close_price.fillna(method='bfill', inplace=True)
@@ -269,7 +271,7 @@ class PortfolioModels():
         """
         pf = self.panelframe
         cum_returns = pf['cum_total_return'].sum(1)
-        returns = (cum_returns - cum_returns.shift(1)) /\
+        returns = (cum_returns - cum_returns.shift(1).fillna(0)) /\
             pf['cum_cost_basis'].sum(1)
         returns.fillna(0, inplace=True)
 

@@ -57,7 +57,7 @@ class BackendClass(object):
     def _validate_user_dict(self):
         # check the consistency of the dates
         if (
-            (self.user['mkt_dates'][0] > self.user['rb_dates'][0]) or\
+            (self.user['mkt_dates'][0] > self.user['rb_dates'][0]) or
             (self.user['mkt_dates'][1] < self.user['rb_dates'][1])
         ):
             print('Market data is not consistent with Robinhood data')
@@ -184,11 +184,14 @@ class BackendClass(object):
         """
         Get three best/worst closed positions by realized gains
         """
-        self._df_closed = pd.read_hdf(self.datafile, 'closed')
-        df1 = self._df_closed.nlargest(3, 'realized_gains')
-        df2 = self._df_closed.nsmallest(3, 'realized_gains')
+        df = pd.read_hdf(self.datafile, 'closed')
+        df1 = df.nlargest(min(3, df.shape[0]), 'realized_gains')
+        df2 = df.nsmallest(min(3, df.shape[0]), 'realized_gains')
         df = pd.concat([df1, df2]).sort_values(by='realized_gains')
         df['buy_price'] = df['current_cost_basis'] / df['signed_size']
+
+        # create unique index to avoid issues with styler
+        df.reset_index(inplace=True)
 
         columns_to_names = {
             'date': 'Date',
@@ -229,16 +232,18 @@ class BackendClass(object):
         """
         market_prices = self._panel['Close'].iloc[-1]
 
-        self._df_open = pd.read_hdf(self.datafile, 'open')
-        df = self._df_open.copy()
+        df = pd.read_hdf(self.datafile, 'open')
         df['current_price'] =\
             df.apply(lambda x: market_prices[x.symbol], axis=1)
         df['unrealized_gains'] =\
             (df['current_price'] - df['average_price']) * df['final_size']
 
-        df1 = df.nlargest(3, 'unrealized_gains').copy()
-        df2 = df.nsmallest(3, 'unrealized_gains').copy()
+        df1 = df.nlargest(min(3, df.shape[0]), 'unrealized_gains').copy()
+        df2 = df.nsmallest(min(3, df.shape[0]), 'unrealized_gains').copy()
         df = pd.concat([df1, df2]).sort_values(by='unrealized_gains')
+
+        # create unique index to avoid issues with styler
+        df.reset_index(inplace=True)
 
         columns_to_names = {
             'date': 'Date',

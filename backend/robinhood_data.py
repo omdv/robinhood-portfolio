@@ -16,6 +16,13 @@ class RobinhoodData:
 
     def _login(self, user, password):
         self.client = RobinhoodAPI()
+        # try import the module with passwords
+        try:
+            _temp = __import__('auth')
+            user = _temp.local_user
+            password = _temp.local_password
+        except:
+            None
         self.client.login(username=user, password=password)
         return self
 
@@ -203,7 +210,7 @@ if __name__ == "__main__":
     df_closed = pd.read_hdf('../data/data.h5', 'closed')
 
     # trim data for github release
-    dates = ['2017-01-01', '2017-05-31']
+    dates = ['2015-01-01', '2016-10-10']
     for (df, name) in [
         (df_div, 'dividends'),
         (df_ord, 'orders'),
