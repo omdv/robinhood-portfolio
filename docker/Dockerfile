@@ -7,6 +7,11 @@ RUN apt-get update && \
     pip3 install --upgrade setuptools
 
 RUN git clone https://github.com/omdv/robinhood-portfolio && \
-	pip3 install -r robinhood-portfolio/requirements.txt
+	pip3 install --upgrade --force-reinstall -r robinhood-portfolio/requirements.txt
+
+RUN openssl s_client -showcerts -connect stooq.com:443 \
+	</dev/null 2>/dev/null|openssl x509 -outform PEM > stooq.pem && \
+	mkdir -p /root/.config/matplotlib && \
+	echo backend:Agg > /root/.config/matplotlib/matplotlibrc
 
 CMD cd robinhood-portfolio && python3 app.py

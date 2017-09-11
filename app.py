@@ -10,9 +10,9 @@ from io import BytesIO
 
 # Initialize
 MY_DPI = 96
-sns.set_style("whitegrid")
 DATAFILE = 'data/data.h5'
 USERFILE = 'data/user.pkl'
+sns.set_style("whitegrid")
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'My_l0ng_very_secure_secret_k3y'
