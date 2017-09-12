@@ -7,4 +7,3 @@ seaborn
 matplotlib
 flask
 git+https://github.com/quantopian/empyrical
-git+https://github.com/czielinski/portfolioopt
