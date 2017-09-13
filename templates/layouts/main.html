@@ -49,6 +49,17 @@
     }
   }
 
+  function toggleIntro() {
+    var list = document.querySelectorAll('.intro');
+    for (x in list) {
+      if (list[x].style.display === 'block') {
+        list[x].style.display = 'none';
+      } else {
+        list[x].style.display = 'block';
+      }
+    }
+  }
+
   var modal = document.getElementById('myModal');
   var btn = document.getElementById('openLogin');
   var span = document.getElementsByClassName('close-modal')[0];

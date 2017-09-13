@@ -1,4 +1,5 @@
 import pandas as pd
+from collections import OrderedDict
 from pickle import dump, load
 from backend.portfolio_model import PortfolioModels
 from backend.robinhood_data import RobinhoodData
@@ -84,7 +85,13 @@ class BackendClass(object):
         """
         md = MarketData(self.datafile)
 
-        if ('fresh_start' in keyword_parameters):
+        # check if symbols match
+        s1 = list(self._df_ord.symbol.unique())
+        s1.sort()
+        s2 = list(self._market.minor_axis)
+        s2.sort()
+
+        if ('fresh_start' in keyword_parameters) or (s1 != s2):
             min_date = self.user['rb_dates'][0]
             max_date = pd.Timestamp("today")
             self._market = md.download_save_market_data(
@@ -132,17 +139,17 @@ class BackendClass(object):
         # use only the last row
         df = self._panel.iloc[:, -1, :-1]
 
-        columns_to_names = {
-            'cum_size': ['Shares', '{:,.0f}'],
-            'current_weight': ['Portfolio weight', '{:.2f}'],
-            'cum_cost_basis': ['Current cost basis', '{:,.2f}'],
-            'cum_value_close': ['Current value', '{:,.2f}'],
-            'cum_realized_gain': ['Realized gain', '{:,.2f}'],
-            'cum_dividends': ['Dividends', '{:,.2f}'],
-            'cum_unrealized_gain': ['Unrealized gain', '{:,.2f}'],
-            'cum_total_return': ['Total return', '{:,.2f}'],
-            'current_return_rate': ['Total return rate', '{:,.2f}%']
-        }
+        columns_to_names = OrderedDict([
+            ('cum_size', ['Shares', '{:,.0f}']),
+            ('current_weight', ['Portfolio weight', '{:.2f}']),
+            ('cum_cost_basis', ['Current cost basis', '{:,.2f}']),
+            ('cum_value_close', ['Current value', '{:,.2f}']),
+            ('cum_realized_gain', ['Realized gain', '{:,.2f}']),
+            ('cum_dividends', ['Dividends', '{:,.2f}']),
+            ('cum_unrealized_gain', ['Unrealized gain', '{:,.2f}']),
+            ('cum_total_return', ['Total return', '{:,.2f}']),
+            ('current_return_rate', ['Total return rate', '{:,.2f}%'])
+        ])
 
         # convert ratios to percent
         df['current_weight'] = df['current_weight'] * 100

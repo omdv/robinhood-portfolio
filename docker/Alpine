@@ -1,13 +1,38 @@
-FROM jfloff/alpine-python:3.4-slim
-RUN /entrypoint.sh \
-	-b git \
-	-p "numpy>=1.11.0" \
-	-p "pandas>=0.17.1,<=0.19.2" \
-	-p "pandas_datareader==0.5.0" \
-	-p requests \
-	-p seaborn \
-	-p matplotlib \
-	-p flask \
-	-p git+https://github.com/quantopian/empyrical \
-	-p git+https://github.com/czielinski/portfolioopt
-CMD python app.py
+FROM frolvlad/alpine-python3
+
+RUN apk add --no-cache libstdc++ lapack-dev freetype-dev libpng wget zlib-dev build-base && \
+    apk add --no-cache \
+        --virtual=.build-dependencies \
+        g++ gfortran musl-dev \
+        python3-dev git && \
+    ln -s locale.h /usr/include/xlocale.h
+
+# Build HDF5
+RUN cd ; wget https://support.hdfgroup.org/ftp/HDF5/current/src/hdf5-1.10.1.tar.gz && \
+    tar -xf hdf5-1.10.1.tar.gz && cd hdf5-1.10.1 && \
+    ./configure --prefix=/usr/local/ && make && make install
+
+RUN apk update && apk add ca-certificates && update-ca-certificates && cd / && \
+    wget http://faculty.cse.tamu.edu/davis/SuiteSparse/SuiteSparse-4.5.3.tar.gz && \
+    tar -xf SuiteSparse-4.5.3.tar.gz
+
+ENV CVXOPT_SUITESPARSE_SRC_DIR /SuiteSparse
+
+RUN git clone https://github.com/omdv/robinhood-portfolio && \
+	pip install -r robinhood-portfolio/requirements.txt && \
+    find /usr/lib/python3.*/ -name 'tests' -exec rm -r '{}' + && \
+    rm /usr/include/xlocale.h && \
+    rm -r /root/.cache && \
+    apk del .build-dependencies
+
+RUN mkdir -p /root/.config/matplotlib && \
+	echo backend:Agg > /root/.config/matplotlib/matplotlibrc
+
+# cleanup
+#RUN cd ; rm -rf hdf5-vol .subversion
+#RUN apt-get -yq remove subversion
+#RUN apt-get -yq autoremove
+#RUN apt-get clean
+#RUN rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+CMD cd robinhood-portfolio && python3 app.py

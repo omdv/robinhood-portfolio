@@ -29,6 +29,10 @@ h2 {
   margin-bottom: 5px;
 }
 
+.intro {
+  display: none;
+}
+
 .footer {
   bottom: 0;
   width: 100%;

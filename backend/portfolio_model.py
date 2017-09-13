@@ -279,7 +279,10 @@ class PortfolioModels():
         - Series with portfolio stats
         """
         pf = self.panelframe
+
+        # can choose either a total return or capital gain only
         return_to_use = 'cum_total_return'
+
         cum_return_D1 = pf[return_to_use].sum(1).shift(1)
         cum_return_D2 = pf[return_to_use].sum(1)
         cost_basis = pf['cum_cost_basis'].sum(1)
