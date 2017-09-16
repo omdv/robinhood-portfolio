@@ -192,14 +192,14 @@ class BackendClass(object):
         # create unique index to avoid issues with styler
         df.reset_index(inplace=True)
 
-        columns_to_names = {
-            'date': 'Date',
-            'symbol': 'Security',
-            'current_size': 'Shares',
-            'buy_price': 'Average buy price',
-            'average_price': 'Average sell price',
-            'realized_gains': 'Realized gain'
-        }
+        columns_to_names = OrderedDict([
+            ('date', 'Date'),
+            ('symbol', 'Security'),
+            ('current_size', 'Shares'),
+            ('buy_price', 'Average buy price'),
+            ('average_price', 'Average sell price'),
+            ('realized_gains', 'Realized gain')
+        ])
 
         self.trades['closed'] = pd.DataFrame()
         for k in columns_to_names:
@@ -244,14 +244,14 @@ class BackendClass(object):
         # create unique index to avoid issues with styler
         df.reset_index(inplace=True)
 
-        columns_to_names = {
-            'date': 'Date',
-            'symbol': 'Security',
-            'final_size': 'Shares',
-            'average_price': 'Average buy price',
-            'current_price': 'Current market price',
-            'unrealized_gains': 'Unrealized gain'
-            }
+        columns_to_names = OrderedDict([
+            ('date', 'Date'),
+            ('symbol', 'Security'),
+            ('final_size', 'Shares'),
+            ('average_price', 'Average buy price'),
+            ('current_price', 'Current market price'),
+            ('unrealized_gains', 'Unrealized gain')
+        ])
 
         self.trades['open'] = pd.DataFrame()
         for k in columns_to_names:
@@ -294,17 +294,17 @@ class BackendClass(object):
                   inplace=True)
 
         ord = pd.concat([cl, op]).sort_values(by='date')
-        columns_to_names = {
-            'date': 'Date',
-            'symbol': 'Security',
-            'signed_size': 'Order size',
-            'final_size': 'Current size',
-            'current_price': 'Current market price',
-            'average_buy_price': 'Average buy price',
-            'average_sell_price': 'Average sell price',
-            'realized_gains': 'Realized gain',
-            'unrealized_gains': 'Unrealized gain'
-            }
+        columns_to_names = OrderedDict([
+            ('date', 'Date'),
+            ('symbol', 'Security'),
+            ('signed_size', 'Order size'),
+            ('final_size', 'Current size'),
+            ('current_price', 'Current market price'),
+            ('average_buy_price', 'Average buy price'),
+            ('average_sell_price', 'Average sell price'),
+            ('realized_gains', 'Realized gain'),
+            ('unrealized_gains', 'Unrealized gain')
+        ])
 
         self.trades['all'] = pd.DataFrame()
         for k in columns_to_names:
