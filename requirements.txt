@@ -7,5 +7,6 @@ requests
 seaborn
 matplotlib
 flask
+pyfolio==0.8.0
 git+https://github.com/quantopian/empyrical
 git+https://github.com/czielinski/portfolioopt
