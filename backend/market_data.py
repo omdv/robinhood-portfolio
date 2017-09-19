@@ -1,8 +1,18 @@
 import pandas as pd
 import numpy as np
 import requests as rq
-from pandas_datareader import data
+import pandas_datareader as pdr
+from pandas_datareader.google.daily import GoogleDailyReader
 from io import StringIO
+
+
+# hack until pandas_datareader is fixed to a new google API
+@property
+def url(self):
+    return 'http://finance.google.com/finance/historical'
+
+
+GoogleDailyReader.url = url
 
 
 # download market benchmark data
@@ -35,27 +45,28 @@ class MarketData:
 
     # returns panel using goodle finance server, pause is required to avoid ban
     def _get_historical_prices(self, tickers, start_date, end_date):
-        pf = data.DataReader(tickers, "google", start_date, end_date, pause=10)
+        # pf = data.DataReader(
+            # tickers, "google", start_date, end_date, pause=10)
+        pf = pdr.get_data_google(
+            tickers, start_date, end_date, pause=10)
         pf = pf.astype(np.float32)
         return pf
-
-    # # download treasury bills yields for different periods for capm model
-    # def _get_treasury_yields(self, start_date, end_date):
-    #     tickers = ["TB4WK", "TB3MS", "TB1YR"]
-    #     pf = data.DataReader(tickers, "fred", start_date, end_date)
-    #     return pf
 
     # return all stocks and index in one panel
     def download_save_market_data(self, tickers, start_date, end_date,
                                   update_existing=False):
-        start_date = self._date_fmt.format(start_date)
-        end_date = self._date_fmt.format(end_date)
-        print("Downloading market data for {}-{}".format(start_date, end_date))
+        start_date_str = self._date_fmt.format(start_date)
+        end_date_str = self._date_fmt.format(end_date)
+        print("Downloading market data for {}-{}".format(
+            start_date_str, end_date_str))
 
         # add market index
-        pf = self._get_historical_prices(tickers, start_date, end_date)
-        pf.loc[:, :, 'market'] = self._get_market_index(start_date, end_date)
-        # tb = self._get_treasury_yields(start_date, end_date)
+        pf = self._get_historical_prices(
+            tickers,
+            start_date.date(),
+            end_date.date())
+        pf.loc[:, :, 'market'] = self._get_market_index(
+            start_date_str, end_date_str)
 
         if update_existing:
             new_dict = {}
@@ -66,7 +77,6 @@ class MarketData:
             pf = pd.Panel(new_dict)
         else:
             pf.to_hdf(self.datafile, 'market')
-            # tb.to_hdf(self.datafile, 'treasury_bills')
         return pf
 
 

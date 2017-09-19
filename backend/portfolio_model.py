@@ -187,6 +187,10 @@ class PortfolioModels():
         pf['cum_unrealized_gain'] =\
             pf['cum_value_close'] - pf['cum_cost_basis']
 
+        # investment return without dividends
+        pf['investment_return'] = pf['cum_unrealized_gain'] + \
+            pf['cum_realized_gain']
+
         # total return
         pf['cum_total_return'] = pf['cum_unrealized_gain'] +\
             pf['cum_dividends'] + pf['cum_realized_gain']
@@ -281,7 +285,7 @@ class PortfolioModels():
         pf = self.panelframe
 
         # can choose either a total return or capital gain only
-        return_to_use = 'cum_total_return'
+        return_to_use = 'investment_return'
 
         cum_return_D1 = pf[return_to_use].sum(1).shift(1)
         cum_return_D2 = pf[return_to_use].sum(1)
