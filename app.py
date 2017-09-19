@@ -16,7 +16,8 @@ sns.set_style("whitegrid")
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'My_l0ng_very_secure_secret_k3y'
-app.debug = True
+app.config['DEBUG'] = False
+app.config['TESTING'] = False
 
 
 def plot_returns(data):

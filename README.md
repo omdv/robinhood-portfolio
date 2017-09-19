@@ -1,4 +1,4 @@
-# Robinhood
+# Robinhood Portfolio
 Python client to access and analyze the Robinhood portfolio.
 Based on unofficial [robinhood-api](https://github.com/Jamonek/Robinhood) and several python libraries for financial analysis, such as:
 - [empyrical](https://github.com/quantopian/empyrical)
@@ -26,26 +26,34 @@ Based on unofficial [robinhood-api](https://github.com/Jamonek/Robinhood) and se
 
 ### How To Install:
 It is recommended to use virtualenv:
-	git clone https://github.com/omdv/robinhood-portfolio && cd robinhood-portfolio
-	virtualenv robinhood && source robinhood/bin/activate && pip3 install -r requirements.txt
+```
+git clone https://github.com/omdv/robinhood-portfolio && cd robinhood-portfolio
+virtualenv robinhood && source robinhood/bin/activate && pip3 install -r requirements.txt
+```
 
 ### How to Use
-	python3 app.py
+```
+python3 app.py
+```
 
 ### Docker container
 Docker container based on Ubuntu is [available](https://hub.docker.com/r/omdv/robinhood-portfolio/). To launch it in a background mode:
-	docker run -d -p 8080:8080 --name robinhood omdv/robinhood-portfolio:ubuntu
+```
+docker run -d -p 8080:8080 --name robinhood omdv/robinhood-portfolio:ubuntu
+```
 
 Once up and running connect to [http://localhost:8080](http://localhost:8080). If using the older versions of docker you will need to use the ip of the docker-machine.
 
-### Jupyter notebook
-Jupyter notebook using the backtrader library with pyfolio in in "notebooks" folder. It is work in progress.
+### Jupyter notebook (WORK IN PROGRESS)
+You can find the Jupyter notebook using the backtrader library with pyfolio in "notebooks" folder.
 
+
+### Disclaimer
+This tool uses the unofficial Robinhood API to access your account. This code and the corresponding tools are provided on "as is" basis and the user is responsible for the safety of his/her own account.
 
 ------------------
 
 # Related
-
 * [empyrical](https://github.com/quantopian/empyrical)
 * [portfolioopt](https://github.com/czielinski/portfolioopt)
 * [robinhood-api](https://github.com/Jamonek/Robinhood)

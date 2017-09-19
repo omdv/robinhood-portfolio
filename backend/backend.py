@@ -69,7 +69,13 @@ class BackendClass(object):
         ):
             print('Market data is not consistent with Robinhood data')
             self.update_market_data(fresh_start=True)
-            self.user
+        # check if dates match the actual data
+        elif (
+            (self.user['mkt_dates'][0] != self._market.major_axis.min()) or
+            (self.user['mkt_dates'][1] != self._market.major_axis.max())
+        ):
+            print('Dates are not consistent with dataset')
+            self.update_market_data(fresh_start=True)
         return self
 
     def _pickle_user_dict(self):
@@ -141,7 +147,7 @@ class BackendClass(object):
 
         columns_to_names = OrderedDict([
             ('cum_size', ['Shares', '{:,.0f}']),
-            ('current_weight', ['Portfolio weight', '{:.2f}']),
+            ('current_weight', ['Portfolio weight', '{:.2f}%']),
             ('cum_cost_basis', ['Current cost basis', '{:,.2f}']),
             ('cum_value_close', ['Current value', '{:,.2f}']),
             ('cum_realized_gain', ['Realized gain', '{:,.2f}']),
