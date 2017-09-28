@@ -44,6 +44,12 @@ docker run -d -p 8080:8080 --name robinhood omdv/robinhood-portfolio:ubuntu
 
 Once up and running connect to [http://localhost:8080](http://localhost:8080). If using the older versions of docker you will need to use the ip of the docker-machine.
 
+To specify a different port run:
+```
+docker run -d -e PORT=$PORT -p $PORT:$PORT --name robinhood omdv/robinhood-portfolio:ubuntu
+```
+
+
 ### Jupyter notebook (WORK IN PROGRESS)
 You can find the Jupyter notebook using the backtrader library with pyfolio in "notebooks" folder.
 
