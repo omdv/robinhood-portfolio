@@ -1,18 +1,8 @@
 import pandas as pd
 import numpy as np
 import requests as rq
-import pandas_datareader as pdr
-from pandas_datareader.google.daily import GoogleDailyReader
+import pandas_datareader.data as web
 from io import StringIO
-
-
-# hack until pandas_datareader is fixed to a new google API
-@property
-def url(self):
-    return 'http://finance.google.com/finance/historical'
-
-
-GoogleDailyReader.url = url
 
 
 # download market benchmark data
@@ -45,11 +35,25 @@ class MarketData:
 
     # returns panel using goodle finance server, pause is required to avoid ban
     def _get_historical_prices(self, tickers, start_date, end_date):
-        # pf = data.DataReader(
-            # tickers, "google", start_date, end_date, pause=10)
-        pf = pdr.get_data_google(
-            tickers, start_date, end_date, pause=10)
-        pf = pf.astype(np.float32)
+
+        # MorningStar provides a multiindex DF, so we need to convert it to
+        # panelframe consistent with other routines
+        pf = web.DataReader(tickers, 'morningstar', start_date, end_date)
+        pf = pf.to_panel()
+        pf = pf.swapaxes(1, 2)
+
+        ### STOOQ section - working, but stooq has strict daily limits
+        # # need to append ".US" to every symbol to read from stooq
+        # # start and end dates are not implemented for stooq
+        # st = StooqDailyReader(
+        #     symbols=[i+'.US' for i in tickers],
+        #     start=start_date, end=end_date,
+        #     retry_count=3, pause=0.001, session=None, chunksize=25)
+        # pf = st.read()
+        # pf = pf.astype(np.float32)
+        # # change tickers back to Robinhood style
+        # pf.minor_axis = [i[:-3] for i in pf.minor_axis]
+        # st.close()
         return pf
 
     # return all stocks and index in one panel
@@ -84,7 +88,8 @@ if __name__ == '__main__':
     print("Testing MarketData")
     md = MarketData(datafile='../data/data.h5')
     df_ord = pd.read_hdf('../data/data.h5', 'orders')
-    pf = md.download_save_market_data(
-        df_ord.symbol.unique(),
+    pf = md._get_historical_prices(
+        # df_ord.symbol.unique(),
+        ['BND', 'VTI'],
         df_ord.date.min(),
         df_ord.date.max())
