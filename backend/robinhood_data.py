@@ -60,11 +60,15 @@ class RobinhoodData:
         dividends = self.client.dividends()
         dividends = [x for x in dividends['results']]
         df = pd.DataFrame(dividends)
-        df['symbol'] = df['instrument'].apply(
-            self.client.get_symbol_by_instrument)
-        df.sort_values(by='paid_at', inplace=True)
-        df.reset_index(inplace=True, drop=True)
-        df_div = self._delete_sensitive_fields(df)
+        if df.shape[0] > 0:
+            df['symbol'] = df['instrument'].apply(
+                self.client.get_symbol_by_instrument)
+            df.sort_values(by='paid_at', inplace=True)
+            df.reset_index(inplace=True, drop=True)
+            df_div = self._delete_sensitive_fields(df)
+        else:
+            df_div = pd.DataFrame(columns=['symbol', 'amount', 'position',
+                                           'rate', 'paid_at', 'payable_date'])
         return df_div
 
     # process orders
