@@ -1,3 +1,6 @@
+# Note
+This app is heavily relying on [pandas-datareader](https://pydata.github.io/pandas-datareader/stable/remote_data.html#) for financial quotes. Over the last couple years multiple APIs were obsoleted by their providers and as I am no longer a RH client I have no time to keep up with those changes. You are welcome to fork and try different sources of quotes, but this repository is _no longer functional as is_.
+
 # Robinhood Portfolio
 Python client to access and analyze the Robinhood portfolio.
 Based on unofficial [robinhood-api](https://github.com/Jamonek/Robinhood) and several python libraries for financial analysis, such as:
