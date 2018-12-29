@@ -1,5 +1,5 @@
+import os
 import pandas as pd
-import numpy as np
 import requests as rq
 import pandas_datareader.data as web
 from io import StringIO
@@ -21,39 +21,35 @@ class MarketData:
     def _get_market_index(self, start_date, end_date):
         url = "https://stooq.com/q/d/l/?s={}&d1={}&d2={}&i=d"
         url = url.format(self.index, start_date, end_date)
-        # get content
         content = rq.get(url=url, verify=False).content
         df = pd.read_csv(StringIO(content.decode('utf8')))
         # check if empty - e.g. update existing over weekend
         try:
             df['Date'] = pd.to_datetime(df['Date'])
             df.set_index('Date', inplace=True)
-        except:
+        except KeyError:
             print('Warning: Market index data is empty!')
             None
+        # convert columns names to lower() in all frames
+        df.columns = [c.lower() for c in df.columns]
         return df
 
-    # returns panel using goodle finance server, pause is required to avoid ban
+    # returns panel with TIINGO, expecting TIINGO_API_KEY in env
     def _get_historical_prices(self, tickers, start_date, end_date):
 
-        # MorningStar provides a multiindex DF, so we need to convert it to
-        # panelframe consistent with other routines
-        pf = web.DataReader(tickers, 'morningstar', start_date, end_date)
+        try:
+            api_key = os.getenv('TIINGO_API_KEY')
+        except KeyError:
+            print("Missing TIINGO_API_KEY")
+
+        # Get data from TIINGO
+        pf = web.get_data_tiingo(
+            symbols=tickers,
+            api_key=api_key,
+            start=start_date,
+            end=end_date)
         pf = pf.to_panel()
         pf = pf.swapaxes(1, 2)
-
-        ### STOOQ section - working, but stooq has strict daily limits
-        # # need to append ".US" to every symbol to read from stooq
-        # # start and end dates are not implemented for stooq
-        # st = StooqDailyReader(
-        #     symbols=[i+'.US' for i in tickers],
-        #     start=start_date, end=end_date,
-        #     retry_count=3, pause=0.001, session=None, chunksize=25)
-        # pf = st.read()
-        # pf = pf.astype(np.float32)
-        # # change tickers back to Robinhood style
-        # pf.minor_axis = [i[:-3] for i in pf.minor_axis]
-        # st.close()
         return pf
 
     # return all stocks and index in one panel
@@ -88,8 +84,11 @@ if __name__ == '__main__':
     print("Testing MarketData")
     md = MarketData(datafile='../data/data.h5')
     df_ord = pd.read_hdf('../data/data.h5', 'orders')
-    pf = md._get_historical_prices(
-        # df_ord.symbol.unique(),
-        ['BND', 'VTI'],
+    df = md._get_market_index(
+        df_ord.date.min(),
+        df_ord.date.max())
+
+    pf = md.download_save_market_data(
+        df_ord.symbol.unique(),
         df_ord.date.min(),
         df_ord.date.max())

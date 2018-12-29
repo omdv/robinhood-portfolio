@@ -140,10 +140,10 @@ class PortfolioModels():
         replace null stock prices using backfill to avoid issues with
         daily_change and beta calculations
         '''
-        close_price = pf['Close']
+        close_price = pf['close']
         close_price.values[close_price.values == 0] = np.nan
         close_price.fillna(method='bfill', inplace=True)
-        pf['Close'] = close_price
+        pf['close'] = close_price
 
         self.panelframe = pf
         return self
@@ -169,14 +169,14 @@ class PortfolioModels():
         Main daily portfolio properties
         """
         # dividend yield
-        pf['dividend_yield'] = pf['dividend_rate'] / pf['Close'] * 100
+        pf['dividend_yield'] = pf['dividend_rate'] / pf['close'] * 100
 
         '''
         cumulative current value of the position for the given security
         at the start and end of the day
         '''
-        pf['cum_value_close'] = pf['cum_size'] * pf['Close']
-        pf['cum_value_open'] = pf['cum_size'] * pf['Open']
+        pf['cum_value_close'] = pf['cum_size'] * pf['close']
+        pf['cum_value_open'] = pf['cum_size'] * pf['open']
 
         # current weight of the given security in the portfolio - matrix
         # based on the close price
@@ -267,7 +267,7 @@ class PortfolioModels():
         Calculate actual market return over observed period
         """
         pf = self.panelframe
-        market_prices = pf['Close', :, 'market']
+        market_prices = pf['close', :, 'market']
         market_return = (market_prices[-1] - market_prices[0]) /\
             market_prices[0]
         return market_return
@@ -293,9 +293,9 @@ class PortfolioModels():
         returns = (cum_return_D2 - cum_return_D1) / cost_basis
         returns.fillna(0, inplace=True)
 
-        m_D1 = pf['Close', :, 'market'].shift(1)
-        m_D2 = pf['Close', :, 'market']
-        market = (m_D2 - m_D1) / pf['Close', :, 'market'].iloc[0]
+        m_D1 = pf['close', :, 'market'].shift(1)
+        m_D2 = pf['close', :, 'market']
+        market = (m_D2 - m_D1) / pf['close', :, 'market'].iloc[0]
         market.fillna(0, inplace=True)
 
         """
@@ -373,7 +373,7 @@ class PortfolioModels():
         """
 
         pf = self.panelframe
-        returns = (pf['Close'] - pf['Close'].shift(1))/pf['Close'].iloc[0]
+        returns = (pf['close'] - pf['close'].shift(1))/pf['close'].iloc[0]
         returns.fillna(0, inplace=True)
 
         # construct resulting dataframe
@@ -461,7 +461,7 @@ class PortfolioModels():
         pf = self.panelframe
 
         # monthly changes in stock_prices prices
-        stock_prices = pf['Close']
+        stock_prices = pf['close']
         stock_month_start = stock_prices.groupby([
             lambda x: x.year,
             lambda x: x.month]).first()
@@ -551,7 +551,7 @@ class PortfolioModels():
 
     def markowitz_portfolios(self):
         pf = self.panelframe
-        returns = (pf['Close'] - pf['Close'].shift(1))/pf['Close'].shift(1)
+        returns = (pf['close'] - pf['close'].shift(1))/pf['close'].shift(1)
         returns.fillna(0, inplace=True)
         market = returns['market']
         returns = returns.iloc[:, :-1]
