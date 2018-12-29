@@ -1,5 +1,7 @@
 # Note
-This app is heavily relying on [pandas-datareader](https://pydata.github.io/pandas-datareader/stable/remote_data.html#) for financial quotes. Over the last couple years multiple APIs were obsoleted by their providers and as I am no longer a RH client I have no time to keep up with those changes. You are welcome to fork and try different sources of quotes, but this repository is **_no longer functional as is_**.
+This app is heavily relying on [pandas-datareader](https://pydata.github.io/pandas-datareader/stable/remote_data.html#) for financial quotes. Over the last couple years multiple APIs were obsoleted by their providers (Google, Morningstart) and as I am no longer a RH client I have no time to keep up with those changes. If you encounter the "Bad Gateway" error or similar it is likely that the current market data source is no longer valid. You are welcome to fork and try different sources of quotes - I will try to fix it, when/if I have time.
+
+**Current APIs are [TIINGO](https://api.tiingo.com/account/token) for stock and [STOOQ](https://stooq.com) for market index.**
 
 # Robinhood Portfolio
 Python client to access and analyze the Robinhood portfolio.
@@ -35,25 +37,26 @@ virtualenv robinhood && source robinhood/bin/activate && pip3 install -r require
 ```
 
 ### How to Use
+Make sure you have set the `TIINGO_API_KEY` environment variable.
 ```
 python3 app.py
 ```
 
 ### Docker container
-Docker container based on Ubuntu is [available](https://hub.docker.com/r/omdv/robinhood-portfolio/). To launch it in a background mode:
+Docker container based on Ubuntu is [available](https://hub.docker.com/r/omdv/robinhood-portfolio/). To launch it in a background mode you need to get TIINGO API key and provide it to docker.
 ```
-docker run -d -p 8080:8080 --name robinhood omdv/robinhood-portfolio:ubuntu
+docker run -e TIINGO_API_KEY=<API-KEY> -d -p 8080:8080 --name robinhood omdv/robinhood-portfolio:ubuntu
 ```
 
 Once up and running connect to [http://localhost:8080](http://localhost:8080). If using the older versions of docker you will need to use the ip of the docker-machine.
 
 To specify a different port run:
 ```
-docker run -d -e PORT=$PORT -p $PORT:$PORT --name robinhood omdv/robinhood-portfolio:ubuntu
+docker run -e TIINGO_API_KEY=<API-KEY> -d -e PORT=$PORT -p $PORT:$PORT --name robinhood omdv/robinhood-portfolio:ubuntu
 ```
 
 
-### Jupyter notebook (WORK IN PROGRESS)
+### Jupyter notebook (draft)
 You can find the Jupyter notebook using the backtrader library with pyfolio in "notebooks" folder.
 
 
