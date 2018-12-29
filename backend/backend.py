@@ -235,7 +235,7 @@ class BackendClass(object):
         """
         Get three best/worst open positions by unrealized gains
         """
-        market_prices = self._panel['Close'].iloc[-1]
+        market_prices = self._panel['close'].iloc[-1]
 
         df = pd.read_hdf(self.datafile, 'open')
         df['current_price'] =\
@@ -286,7 +286,7 @@ class BackendClass(object):
     def _get_all_orders(self):
         cl = pd.read_hdf(self.datafile, 'closed')
         op = pd.read_hdf(self.datafile, 'open')
-        mkt = self._panel['Close'].iloc[-1]
+        mkt = self._panel['close'].iloc[-1]
 
         cl['average_buy_price'] = cl['current_cost_basis'] / cl['signed_size']
         cl.rename(columns={'average_price': 'average_sell_price'},
