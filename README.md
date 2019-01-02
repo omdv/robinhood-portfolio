@@ -1,5 +1,5 @@
 # Note
-This app is heavily relying on [pandas-datareader](https://pydata.github.io/pandas-datareader/stable/remote_data.html#) for financial quotes. Over the last couple years multiple APIs were obsoleted by their providers (Google, Morningstart) and as I am no longer a RH client I have no time to keep up with those changes. If you encounter the "Bad Gateway" error or similar it is likely that the current market data source is no longer valid. You are welcome to fork and try different sources of quotes - I will try to fix it, when/if I have time.
+This app is heavily relying on [pandas-datareader](https://pydata.github.io/pandas-datareader/stable/remote_data.html#) for financial quotes. Over the last couple years multiple APIs were obsoleted by their providers (Google, Morningstar) and as I am no longer a RH client I have no time to keep up with those changes. If you encounter the "Bad Gateway" error or similar it is likely that the current market data source is no longer valid. You are welcome to fork and try different sources of quotes - I will try to fix it, when/if I have time.
 
 **Current APIs are [TIINGO](https://api.tiingo.com/account/token) for stock and [STOOQ](https://stooq.com) for market index.**
 
