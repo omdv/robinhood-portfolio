@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from pandas.core.tools.datetimes import normalize_date
-from backend.robinhood_api import RobinhoodAPI
+from Robinhood import Robinhood
 
 
 class RobinhoodData:
@@ -15,15 +15,18 @@ class RobinhoodData:
     def __init__(self, datafile):
         self.datafile = datafile
 
-    def _login(self, user, password):
-        self.client = RobinhoodAPI()
+    def _login(self, username, password):
+        self.client = Robinhood()
         # try import the module with passwords
         try:
             _temp = __import__('auth')
             self.client.login(_temp.local_user, _temp.local_password)
         except:
-            self.client.login(username=user, password=password)
+            self.client.login(username=username, password=password)
         return self
+
+    def _get_symbol_from_instrument_url(self, url):
+        return self._fetch_json_by_url(url)['symbol']
 
     # private method for getting all orders
     def _fetch_json_by_url(self, url):
@@ -48,7 +51,7 @@ class RobinhoodData:
             orders.extend(past_orders['results'])
         df = pd.DataFrame(orders)
         df['symbol'] = df['instrument'].apply(
-            self.client.get_symbol_by_instrument)
+            self._get_symbol_from_instrument_url)
         df.sort_values(by='created_at', inplace=True)
         df.reset_index(inplace=True, drop=True)
         df_ord = self._delete_sensitive_fields(df)
@@ -62,7 +65,7 @@ class RobinhoodData:
         df = pd.DataFrame(dividends)
         if df.shape[0] > 0:
             df['symbol'] = df['instrument'].apply(
-                self.client.get_symbol_by_instrument)
+                self._get_symbol_from_instrument_url)
             df.sort_values(by='paid_at', inplace=True)
             df.reset_index(inplace=True, drop=True)
             df_div = self._delete_sensitive_fields(df)
@@ -203,7 +206,7 @@ class RobinhoodData:
 if __name__ == "__main__":
     rd = RobinhoodData('../data/data.h5')
 
-    if False:
+    if True:
         df_div, df_ord, df_open, df_closed =\
             rd.download_robinhood_data(None, None)
 
