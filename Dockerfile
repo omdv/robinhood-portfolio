@@ -11,7 +11,10 @@ RUN apt-get update && \
 RUN mkdir -p /root/.config/matplotlib && \
 	echo backend:Agg > /root/.config/matplotlib/matplotlibrc
 
-RUN VERSION=${VERSION} git clone https://github.com/omdv/robinhood-portfolio && \
+RUN git clone https://github.com/Jamonek/Robinhood && \
+	pip3 install Robinhood/
+
+RUN VERSION=${VERSION} git clone --branch new_api https://github.com/omdv/robinhood-portfolio && \
 	pip3 install --upgrade --force-reinstall -r robinhood-portfolio/requirements.txt
 
 CMD cd robinhood-portfolio && python3 app.py
