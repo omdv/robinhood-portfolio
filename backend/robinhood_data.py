@@ -1,29 +1,22 @@
+"""
+Download and prepare robinhood data
+"""
 import pandas as pd
 import numpy as np
-from pandas.core.tools.datetimes import normalize_date
-from Robinhood import Robinhood
 
 
 class RobinhoodData:
     """
     Wrapper to download orders and dividends from Robinhood accounts
-    Downloads two dataframes and saves to datafile
+    Downloads two dataframes and saves to datafolder
     ----------
     Parameters:
-    datafile : location of h5 datafile
+    datafolder : location of data
+    client : connected pyrh client
     """
-    def __init__(self, datafile):
-        self.datafile = datafile
-
-    def _login(self, username, password):
-        self.client = Robinhood()
-        # try import the module with passwords
-        try:
-            _temp = __import__('auth')
-            self.client.login(_temp.local_user, _temp.local_password)
-        except:
-            self.client.login(username=username, password=password)
-        return self
+    def __init__(self, datafolder, client):
+        self.datafolder = datafolder
+        self.client = client
 
     def _get_symbol_from_instrument_url(self, url):
         return self._fetch_json_by_url(url)['symbol']
@@ -90,9 +83,9 @@ class RobinhoodData:
         for field in ['created_at']:
             df[field] = pd.to_datetime(df[field])
 
-        # add days
-        df['date'] = df['created_at'].apply(
-            lambda x: normalize_date(x))
+        # normalize dates
+        idx = pd.Index(df['created_at']).normalize()
+        df['date'] = idx
 
         # rename columns for consistency
         df.rename(columns={
@@ -106,6 +99,10 @@ class RobinhoodData:
             -df['current_size'])
         df['signed_size'] = df['signed_size'].astype(np.int64)
 
+        # initialize columns
+        df['realized_gains'] = 0.
+        df['current_cost_basis'] = 0.
+
         return df
 
     # process_orders
@@ -118,9 +115,9 @@ class RobinhoodData:
         for field in ['paid_at', 'payable_date']:
             df[field] = pd.to_datetime(df[field])
 
-        # add days
-        df['date'] = df['paid_at'].apply(
-            lambda x: normalize_date(x))
+        # normalize dates
+        idx = pd.Index(df['paid_at']).normalize()
+        df['date'] = idx
         return df
 
     def _generate_positions(self, df_ord):
@@ -142,7 +139,6 @@ class RobinhoodData:
         df_closed = df_ord[df_ord.side == 'sell'].copy()
 
         # create a new column for today's position size
-        # TODO: may be redundant - review later
         df_open['final_size'] = df_open['current_size']
         df_closed['final_size'] = df_closed['current_size']
 
@@ -150,7 +146,7 @@ class RobinhoodData:
         for i_closed, row_closed in df_closed.iterrows():
             sell_size = row_closed.final_size
             sell_cost_basis = 0
-            for i_open, row_open in df_open[
+            for i_open, _ in df_open[
                     (df_open.symbol == row_closed.symbol) &
                     (df_open.date < row_closed.date)].iterrows():
 
@@ -180,48 +176,73 @@ class RobinhoodData:
             df_open['final_size'] * df_open['average_price']
 
         # calculate capital gains for closed positions
-        df_closed['realized_gains'] =\
-            df_closed['current_size'] * df_closed['average_price'] +\
-            df_closed['current_cost_basis']
-        df_closed['final_cost_basis'] = 0
+        if df_closed.shape[0] != 0:
+            df_closed['realized_gains'] =\
+                df_closed['current_size'] * df_closed['average_price'] +\
+                df_closed['current_cost_basis']
+            df_closed['final_cost_basis'] = 0
 
         return df_open, df_closed
 
-    def download_robinhood_data(self, user, password):
-        self._login(user, password)
+    def download(self, orders=None, dividends=None):
+        """
+        Download and parse method
+        """
+        if dividends is None:
+            dividends = self._download_dividends()
+        df_div = self._process_dividends(dividends)
+        df_div.to_pickle(self.datafolder + "dividends.pkl")
 
-        df_div = self._process_dividends(self._download_dividends())
-        df_div.to_hdf(self.datafile, 'dividends')
-
-        df_ord = self._process_orders(self._download_orders())
-        df_ord.to_hdf(self.datafile, 'orders')
+        if orders is None:
+            orders = self._download_orders()
+        df_ord = self._process_orders(orders)
+        df_ord.to_pickle(self.datafolder + "orders.pkl")
 
         df_open, df_closed = self._generate_positions(df_ord)
-        df_open.to_hdf(self.datafile, 'open')
-        df_closed.to_hdf(self.datafile, 'closed')
+        df_open.to_pickle(self.datafolder + "open.pkl")
+        df_closed.to_pickle(self.datafolder + "closed.pkl")
 
         return df_div, df_ord, df_open, df_closed
 
+    def demo_orders(self):
+        """
+        Generate demo orders dataframe for testing
+        """
+        orders = pd.DataFrame(index=range(11))
+        orders['created_at'] = pd.Timestamp('2018-01-02', tz='UTC')
+        orders['date'] = pd.Timestamp('2018-01-02', tz='UTC')
+        orders['symbol'] = ['MSFT', 'AAPL', 'CVX', 'XOM', 'BND', 'CAT', 'BA', 'TIF', 'BAC', 'JPM', 'MSFT']
+        orders['current_size'] = 100
+        orders['signed_size'] = 100
+        orders['average_price'] = 100.0
+        orders['fees'] = 0
+        orders['cumulative_quantity'] = 100
+        orders['side'] = 'buy'
+        orders.to_pickle('data/orders.pkl')
+
+        # one sell order
+        orders.loc[10, 'side'] = 'sell'
+        orders.loc[10, 'average_price'] = 120.
+        orders.loc[10, 'created_at'] = pd.Timestamp('2020-01-03', tz='UTC')
+        orders.loc[10, 'date'] = pd.Timestamp('2020-01-03', tz='UTC')
+        orders.loc[10, 'cumulative_quantity'] = 20
+        orders.loc[10, 'signed_size'] = -20
+        orders.loc[10, 'current_size'] = 20
+        orders.loc[10, 'fees'] = 0
+        return orders
+
+    def demo_dividends(self):
+        """
+        Generate demo dividends dataframe for testing
+        """
+        dividends = pd.DataFrame(index=range(10))
+        dividends['symbol'] = ['MSFT', 'AAPL', 'CVX', 'XOM', 'BND', 'CAT', 'BA', 'TIF', 'BAC', 'JPM']
+        dividends['position'] = 100
+        dividends['amount'] = [20, 30, 40, 50, 60, 70, 80, 90, 100, 110]
+        dividends['rate'] = dividends['amount'] / dividends['position']
+        dividends['paid_at'] = pd.Timestamp('2019-01-15', tz='UTC')
+        dividends['payable_date'] = pd.Timestamp('2019-01-02', tz='UTC')
+        return dividends
 
 if __name__ == "__main__":
-    rd = RobinhoodData('../data/data.h5')
-
-    if True:
-        df_div, df_ord, df_open, df_closed =\
-            rd.download_robinhood_data(None, None)
-
-    df_div = pd.read_hdf('../data/data.h5', 'dividends')
-    df_ord = pd.read_hdf('../data/data.h5', 'orders')
-    df_open = pd.read_hdf('../data/data.h5', 'open')
-    df_closed = pd.read_hdf('../data/data.h5', 'closed')
-
-    # trim data for github release
-    dates = ['2015-01-01', '2016-10-10']
-    for (df, name) in [
-        (df_div, 'dividends'),
-        (df_ord, 'orders'),
-        (df_open, 'open'),
-        (df_closed, 'closed')
-    ]:
-            df = df[(df.date >= dates[0]) & (df.date <= dates[1])]
-            df.to_hdf('../data/data.h5', name)
+    pass

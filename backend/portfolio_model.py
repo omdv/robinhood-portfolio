@@ -1,31 +1,36 @@
-# TODO:
-# 1. take into account the RB fee when selling position
+"""
+Porfolio models and calculations
+"""
+from collections import OrderedDict
+from scipy import stats
 import numpy as np
 import pandas as pd
 import empyrical as emp
 import portfolioopt as pfopt
-from scipy import stats
 
 
 # calculating portfolio performance
 class PortfolioModels():
-    def __init__(self, datafile):
-        self.datafile = datafile
-        self.panelframe = None
-        self.APPROX_BDAYS_PER_YEAR = 252
+    def __init__(self, datafolder):
+        self.datafolder = datafolder
+        self._daily = None
+        self._calculate_daily()
         return None
 
-    def _merge_market_with_orders(self, df_ord, pf):
+    def _merge_market_with_orders(self, df_ord, mkt):
         """
         Helper for merging orders with panel frame with market data
         """
-        pf['cum_size'] = 0
-        pf['cum_cost_basis'] = 0
-        pf['cum_realized_gain'] = 0
+
+        # initialize columns
+        mkt['cum_size'] = 0
+        mkt['cum_cost_basis'] = 0
+        mkt['cum_realized_gain'] = 0
+
         # loop over tickers, except the last one, which is market
-        for key in pf.minor_axis[:-1]:
-            df1 = pf.loc[:, :, key]
-            df2 = df_ord[df_ord['symbol'] == key].copy()
+        for _symbol in mkt.index.get_level_values(0).unique()[:-1]:
+            df1 = mkt.loc[_symbol]
+            df2 = df_ord[df_ord['symbol'] == _symbol].copy()
             df2.set_index('date', inplace=True)
             df = pd.merge(
                 df1, df2[['cum_size', 'cum_cost_basis', 'cum_realized_gain']],
@@ -39,21 +44,26 @@ class PortfolioModels():
             df.drop('cum_cost_basis_x', axis=1, inplace=True)
             df.drop('cum_realized_gain_x', axis=1, inplace=True)
 
-            # now propagate values from last observed
+            # propagate values from last observed
             df.fillna(method='ffill', inplace=True)
             df.fillna(0, inplace=True)
-            pf.loc[:, :, key] = df
-        return pf
 
-    def _merge_market_with_dividends(self, df_div, pf):
+            mkt.loc[_symbol] = df.values
+
+        return mkt
+
+    def _merge_market_with_dividends(self, df_div, mkt):
         """
         Helper to merge the market frame with dividends
         """
-        pf['cum_dividends'] = 0
-        pf['dividend_rate'] = 0
-        for key in pf.minor_axis[:-1]:
-            df1 = pf.loc[:, :, key]
-            df2 = df_div[df_div['symbol'] == key].copy()
+        # initialize columns
+        mkt['cum_dividends'] = 0
+        mkt['dividend_rate'] = 0
+
+        # loop over tickers, except the last one, which is market
+        for _symbol in mkt.index.get_level_values(0).unique()[:-1]:
+            df1 = mkt.loc[_symbol]
+            df2 = df_div[df_div['symbol'] == _symbol].copy()
             df2.set_index('date', inplace=True)
             df = pd.merge(
                 df1, df2[['cum_dividends', 'rate']],
@@ -66,89 +76,15 @@ class PortfolioModels():
                 'cum_dividends_y': 'cum_dividends',
                 'rate': 'dividend_rate'}, inplace=True)
 
-            # now propagate values from last observed
+            # propagate values from last observed
             df['cum_dividends'].fillna(method='ffill', inplace=True)
             df['cum_dividends'].fillna(0, inplace=True)
-            pf.loc[:, :, key] = df
-        return pf
 
-    def _prepare_portfolio(self):
-        """
-        Prepare portfolio panelframe
-        by merging orders and dividends with stock prices and
-        calculating cumulative values
-        -------------
-        Parameters:
-        - None, using df_ord, df_div and market prices
-        """
+            mkt.loc[_symbol] = df.values
 
-        # read frames for internal use
-        # df_ord = pd.read_hdf(self.datafile, 'orders')
-        df_div = pd.read_hdf(self.datafile, 'dividends')
-        df_open = pd.read_hdf(self.datafile, 'open')
-        df_closed = pd.read_hdf(self.datafile, 'closed')
-        pf = pd.read_hdf(self.datafile, 'market')
+        return mkt
 
-        # try this out
-        # TODO: if works - df_ord may be replaced
-        df_ord = pd.concat([df_open, df_closed]).sort_index()
-
-        # calculate cumulative size and cost basis
-        df_ord['cum_size'] =\
-            df_ord.groupby('symbol').signed_size.cumsum()
-
-        # cost basis for closed orders is equal to the one for original open
-        # position, so cumulative does not include any gains or losses from
-        # closing orders
-        df_ord['cum_cost_basis'] =\
-            df_ord.groupby('symbol').current_cost_basis.cumsum()
-
-        # aggregate orders on the same day
-        func = {
-            'average_price': 'mean',
-            'current_cost_basis': 'sum',
-            'current_size': 'sum',
-            'fees': 'sum',
-            'final_cost_basis': 'sum',
-            'final_size': 'sum',
-            'signed_size': 'sum',
-            'cum_size': 'sum',
-            'cum_cost_basis': 'sum',
-            'realized_gains': 'sum'}
-        df_ord = df_ord.groupby(['date', 'symbol'], as_index=False).agg(func)
-
-        # calculate cumulative size and cost basis
-        df_ord['cum_size'] =\
-            df_ord.groupby('symbol').signed_size.cumsum()
-        df_ord['cum_cost_basis'] =\
-            df_ord.groupby('symbol').current_cost_basis.cumsum()
-        df_ord['cum_realized_gain'] =\
-            df_ord.groupby('symbol').realized_gains.cumsum()
-
-        # fix the average price, so it is weighted mean
-        df_ord['average_price'] =\
-            df_ord['cum_cost_basis'] / df_ord['cum_size']
-
-        # calculate cumulative dividends
-        df_div['cum_dividends'] = df_div.groupby('symbol').amount.cumsum()
-
-        # merge both with market
-        pf = self._merge_market_with_orders(df_ord, pf)
-        pf = self._merge_market_with_dividends(df_div, pf)
-
-        '''
-        replace null stock prices using backfill to avoid issues with
-        daily_change and beta calculations
-        '''
-        close_price = pf['close']
-        close_price.values[close_price.values == 0] = np.nan
-        close_price.fillna(method='bfill', inplace=True)
-        pf['close'] = close_price
-
-        self.panelframe = pf
-        return self
-
-    def daily_portfolio_changes(self):
+    def _calculate_daily(self):
         """
         Calculate daily prices, cost-basis, ratios, returns, etc.
         Used for plotting and also showing the final snapshot of
@@ -157,38 +93,97 @@ class PortfolioModels():
         Parameters:
         - None
         Return:
-        - Panelframe with daily return values. Used for plotting
-        and for html output
+        - Multiindex dataframe with daily values
         """
+        # read frames for internal use
+        market = pd.read_pickle(self.datafolder + "/market.pkl")
 
-        # prepare the portfolio panel
-        self._prepare_portfolio()
-        pf = self.panelframe
+        # recreate orders from open and closed pos
+        df = pd.concat([
+            pd.read_pickle(self.datafolder + "/open.pkl"),
+            pd.read_pickle(self.datafolder + "/closed.pkl")]).sort_index()
 
-        """
-        Main daily portfolio properties
-        """
+        # calculate cumulative size and cost basis
+        df['cum_size'] =\
+            df.groupby('symbol').signed_size.cumsum()
+
+        # cost basis for closed orders is equal to the one for original open
+        # position, so cumulative does not include any gains or losses from
+        # closing orders
+        df['cum_cost_basis'] =\
+            df.groupby('symbol').current_cost_basis.cumsum()
+
+        # aggregate orders on the same day
+        func = {
+            'average_price': np.mean,
+            'current_cost_basis': np.sum,
+            'current_size': np.sum,
+            'fees': np.sum,
+            'final_cost_basis': np.sum,
+            'final_size': np.sum,
+            'signed_size': np.sum,
+            'cum_size': np.sum,
+            'cum_cost_basis': np.sum,
+            'realized_gains': np.sum}
+        df = df.groupby(['date', 'symbol'], as_index=False).agg(func)
+        # df = pd.pivot_table(df,
+        #     values=func.keys(),
+        #     index=['symbol', 'date'],
+        #     aggfunc=func).reset_index()
+
+        # calculate cumulative size and cost basis
+        df['cum_size'] =\
+            df.groupby('symbol').signed_size.cumsum()
+        df['cum_cost_basis'] =\
+            df.groupby('symbol').current_cost_basis.cumsum()
+        df['cum_realized_gain'] =\
+            df.groupby('symbol').realized_gains.cumsum()
+
+        # fix the average price, so it is weighted mean
+        df['average_price'] =\
+            df['cum_cost_basis'] / df['cum_size']
+
+        # merge orders with market
+        pf = self._merge_market_with_orders(df, market)
+
+
+        df = pd.read_pickle(self.datafolder + "/dividends.pkl")
+
+        # calculate cumulative dividends
+        df['cum_dividends'] = df.groupby('symbol').amount.cumsum()
+
+        # merge orders with market
+        pf = self._merge_market_with_dividends(df, pf)
+
+        
+        #replace null stock prices using backfill to avoid issues with
+        #daily_change and beta calculations
+        close_price = pf['close']
+        close_price.values[close_price.values == 0] = np.nan
+        close_price.fillna(method='bfill', inplace=True)
+        pf['close'] = close_price
+
+        # Main daily portfolio properties
         # dividend yield
         pf['dividend_yield'] = pf['dividend_rate'] / pf['close'] * 100
 
-        '''
-        cumulative current value of the position for the given security
-        at the start and end of the day
-        '''
+        # cumulative current value of the position for the given security
+        # at the start and end of the day
         pf['cum_value_close'] = pf['cum_size'] * pf['close']
         pf['cum_value_open'] = pf['cum_size'] * pf['open']
 
         # current weight of the given security in the portfolio - matrix
         # based on the close price
         pf['current_weight'] =\
-            (pf['cum_value_close'].T / pf['cum_value_close'].sum(axis=1)).T
+            (pf['cum_value_close'].T /
+                pf.groupby(level='date')['cum_value_close'].sum()).T
 
         # unrealized gain on open positions at the end of day
         pf['cum_unrealized_gain'] =\
             pf['cum_value_close'] - pf['cum_cost_basis']
 
         # investment return without dividends
-        pf['investment_return'] = pf['cum_unrealized_gain'] + \
+        pf['cum_investment_return'] = pf['cum_unrealized_gain'] + \
             pf['cum_realized_gain']
 
         # total return
@@ -204,10 +199,235 @@ class PortfolioModels():
             where(pf['cum_size'] != 0).fillna(method='ffill')
 
         # assign to panelframe
-        self.panelframe = pf
+        self._daily = pf
         return self
 
-    def stock_correlation_matrix(self):
+    def _observed_period_portfolio_return(self, _):
+        """
+        Calculate actual portfolio return over observed period
+        """
+        pf = self._daily
+        res = pf.reset_index().pivot(
+                    index='date',
+                    columns='symbol',
+                    values='cum_total_return').sum(axis=1) / \
+            pf.reset_index().pivot(
+                        index='date',
+                        columns='symbol',
+                        values='cum_cost_basis').sum(axis=1)
+        return res[-1]
+
+    def _observed_period_market_return(self, _):
+        """
+        Calculate actual market return over observed period
+        """
+        pf = self._daily
+        return (pf.loc['SPY']['close'][-1] - pf.loc['SPY']['close'][0]) / \
+            pf.loc['SPY']['close'][0]
+
+    def _stock_daily_returns(self):
+        """
+        Estimate daily noncumulative returns for empyrical
+        """
+        pf = self._daily
+        daily = pf.groupby(level='symbol')['close'].\
+            transform(lambda x: (x-x.shift(1))/abs(x))
+        daily.fillna(0, inplace=True)
+        daily = daily.reset_index().pivot(
+            index='date',
+            columns='symbol',
+            values='close')
+        return daily
+
+    def _stock_monthly_returns(self):
+        """
+        Monthly returns = capital gain + dividend yields for all symbols
+        -------------
+        Parameters:
+        - none
+        Returns:
+        - dataframe with monthly returns in % by symbol
+        """
+        pf = self._daily
+
+        # monthly changes in stock_prices prices
+        # stock_prices = pf['close']
+        stock_prices = pf.reset_index().pivot(
+            index='date',
+            columns='symbol',
+            values='close')
+        stock_month_start = stock_prices.groupby([
+            lambda x: x.year,
+            lambda x: x.month]).first()
+        stock_month_end = stock_prices.groupby([
+            lambda x: x.year,
+            lambda x: x.month]).last()
+        stock_monthly_return = (stock_month_end - stock_month_start) /\
+            stock_month_start * 100
+
+        stock_monthly_div_yield = pf.reset_index().pivot(
+            index='date',
+            columns='symbol',
+            values='dividend_yield').groupby([
+                lambda x: x.year,
+                lambda x: x.month]).mean()
+        stock_monthly_div_yield.fillna(0, inplace=True)
+
+        return stock_monthly_return + stock_monthly_div_yield
+
+    def _ptf_monthly_returns(self):
+        """
+        monthly changes in portfolio value
+        using indirect calculation with mean ratios
+        TODO - implement a more accurate method
+        -------------
+        Parameters:
+        - none
+        - Using stock prices, portfolio weights on every day and div yield
+        Returns:
+        - dataframe with monthly returns in % by symbol
+        """
+        stock_monthly_change = self._stock_monthly_returns()
+        ptf_monthly_ratio = self._daily.reset_index().pivot(
+            index='date',
+            columns='symbol',
+            values='current_weight').groupby([
+                lambda x: x.year,
+                lambda x: x.month]).mean()
+        ptf_monthly_returns = (
+            stock_monthly_change * ptf_monthly_ratio).sum(1)
+        return ptf_monthly_returns
+
+    def _one_pfopt_case(self, stock_returns, market, weights, name):
+        case = {}
+        case['name'] = name
+        case['weights'] = weights
+
+        returns = np.dot(stock_returns, weights.values.reshape(-1, 1))
+        returns = pd.Series(returns.flatten(), index=market.index)
+
+        simple_stat_funcs = [
+            emp.annual_return,
+            emp.annual_volatility,
+            emp.sharpe_ratio,
+            emp.stability_of_timeseries,
+            emp.max_drawdown,
+            emp.omega_ratio,
+            emp.calmar_ratio,
+            emp.sortino_ratio,
+            emp.value_at_risk,
+        ]
+
+        factor_stat_funcs = [
+            emp.alpha,
+            emp.beta,
+        ]
+
+        stat_func_names = {
+            'annual_return': 'Annual return',
+            'annual_volatility': 'Annual volatility',
+            'alpha': 'Alpha',
+            'beta': 'Beta',
+            'sharpe_ratio': 'Sharpe ratio',
+            'calmar_ratio': 'Calmar ratio',
+            'stability_of_timeseries': 'Stability',
+            'max_drawdown': 'Max drawdown',
+            'omega_ratio': 'Omega ratio',
+            'sortino_ratio': 'Sortino ratio',
+            'value_at_risk': 'Daily value at risk',
+        }
+
+        ptf_stats = pd.Series()
+        for stat_func in simple_stat_funcs:
+            ptf_stats[stat_func_names[stat_func.__name__]] = stat_func(returns)
+
+        for stat_func in factor_stat_funcs:
+            res = stat_func(returns, market)
+            ptf_stats[stat_func_names[stat_func.__name__]] = res
+
+        case['stats'] = ptf_stats
+
+        return case
+
+    def stocks_risk(self):
+        """
+        Calculate risk properties for every security in the portfolio
+        using `empyrical` library.
+        Results are consistent with self-written routine
+        References:
+        1. p. 137 of Modern Portfolio Theory and Investment Analysis
+        edition 9
+        2. faculty.washington.edu/ezivot/econ424/portfolioTheoryMatrix.pdf
+        -------------
+        Parameters:
+        - If include risk_free_return or not
+        - Using stock prices, weight ratios and div yield
+        Return:
+        - Dataframe of properties for each security in portfolio
+        """
+
+        daily = self._stock_daily_returns()
+
+        # # construct resulting dataframe
+        df = pd.DataFrame({
+            'means': daily.mean(axis=0),
+        })
+
+        simple_stat_funcs = [
+            emp.annual_return,
+            emp.annual_volatility,
+            emp.sharpe_ratio,
+            emp.calmar_ratio,
+            emp.stability_of_timeseries,
+            emp.max_drawdown,
+            emp.omega_ratio,
+            emp.sortino_ratio,
+            stats.skew,
+            stats.kurtosis,
+            emp.tail_ratio,
+            emp.value_at_risk,
+        ]
+
+        factor_stat_funcs = [
+            emp.alpha,
+            emp.beta,
+        ]
+
+        stat_func_names = {
+            'annual_return': 'Annual return',
+            'cum_returns_final': 'Cumulative returns',
+            'annual_volatility': 'Annual volatility',
+            'alpha': 'Alpha',
+            'beta': 'Beta',
+            'sharpe_ratio': 'Sharpe ratio',
+            'calmar_ratio': 'Calmar ratio',
+            'stability_of_timeseries': 'Stability',
+            'max_drawdown': 'Max drawdown',
+            'omega_ratio': 'Omega ratio',
+            'sortino_ratio': 'Sortino ratio',
+            'tail_ratio': 'Tail ratio',
+            'value_at_risk': 'Daily value at risk',
+            'skew': 'Skew',
+            'kurtosis': 'Kurtosis'
+        }
+
+        for stat_func in simple_stat_funcs:
+            df[stat_func_names[stat_func.__name__]] =\
+                daily.apply(lambda x: stat_func(x)).apply(pd.Series)
+
+        for stat_func in factor_stat_funcs:
+            df[stat_func_names[stat_func.__name__]] =\
+                daily.apply(lambda x: stat_func(
+                    x, daily['SPY'])).apply(pd.Series)
+
+        del df['means']
+
+        # assign for markowitz use
+        self.stocks_daily = daily
+
+        return df
+
+    def stocks_correlation(self):
         """
         Calculate stock correlation matrix
         References:
@@ -224,7 +444,7 @@ class PortfolioModels():
 
         # get monthly changes for all stocks
         stock_returns = self._stock_monthly_returns()
-        stock_returns['portfolio'] = self._ptf_monthly_returns_indirect()
+        stock_returns['portfolio'] = self._ptf_monthly_returns()
 
         # get mean values and std by security
         returns_mean = stock_returns.mean(axis=0)
@@ -244,35 +464,80 @@ class PortfolioModels():
             returns_covar,
             columns=returns_mean.keys(),
             index=returns_mean.keys())
-        df_covar = df_covar.iloc[:-2, :-2]
+        df_covar = df_covar.iloc[:-1, :-1]
 
         df_corr = pd.DataFrame(
             returns_corr,
             columns=returns_mean.keys(),
             index=returns_mean.keys())
 
+        # assign for markowitz use
+        self.stocks_covar = df_covar
+
         return df_corr, df_covar
 
-    def _observed_period_portfolio_return(self, _):
+    def portfolio_returns(self):
         """
-        Calculate actual portfolio return over observed period
+        Calculate portfolio evolution
+        total stocks value
+        investment returns
+        dividend returns
+        total returns
         """
-        pf = self.panelframe
-        ptf_return = pf['cum_total_return'].sum(1).iloc[-1] /\
-            pf['cum_cost_basis'].sum(1).iloc[-1]
-        return ptf_return
+        pf = self._daily
+        cum_investment_returns = pf.reset_index().pivot(
+            index='date',
+            columns='symbol',
+            values='cum_investment_return').sum(axis=1)
 
-    def _observed_period_market_return(self, _):
-        """
-        Calculate actual market return over observed period
-        """
-        pf = self.panelframe
-        market_prices = pf['close', :, 'market']
-        market_return = (market_prices[-1] - market_prices[0]) /\
-            market_prices[0]
-        return market_return
+        cum_dividends = pf.reset_index().pivot(
+            index='date',
+            columns='symbol',
+            values='cum_dividends').sum(axis=1)
+        return cum_investment_returns, cum_dividends
 
-    def actual_portfolio_stats(self):
+    def portfolio_summary(self):
+        """
+        Calculate portfolio composition and summary by stock
+        """
+        df = self._daily
+        df = df.groupby(level='symbol').last()
+
+        columns_to_names = OrderedDict([
+            ('cum_size', ['Shares', '{:,.0f}']),
+            ('current_weight', ['Portfolio weight', '{:.2f}%']),
+            ('cum_cost_basis', ['Current cost basis', '{:,.2f}']),
+            ('cum_value_close', ['Current value', '{:,.2f}']),
+            ('cum_realized_gain', ['Realized P/L', '{:,.2f}']),
+            ('cum_dividends', ['Dividends', '{:,.2f}']),
+            ('cum_unrealized_gain', ['Unrealized P/L', '{:,.2f}']),
+            ('cum_total_return', ['Total return', '{:,.2f}']),
+            ('current_return_rate', ['Total return rate', '{:,.2f}%'])
+        ])
+
+        # convert ratios to percent
+        df['current_weight'] = df['current_weight'] * 100
+
+        # add total row
+        df = df.copy()  # avoid chained assignment warning
+        df.loc['Portfolio', :] = df.sum(axis=0)
+        df.loc['Portfolio', 'current_return_rate'] =\
+            df.loc['Portfolio', 'cum_total_return'] /\
+            df.loc['Portfolio', 'cum_cost_basis'] * 100
+
+        # re-order
+        df = df[list(columns_to_names.keys())]
+
+        # format
+        df = df.apply(
+            lambda x: x.map(columns_to_names[x.name][1].format), axis=0)
+
+        # rename columns
+        df.columns =\
+            df.columns.to_series().apply(lambda x: columns_to_names[x][0])
+        return df
+
+    def portfolio_stats(self):
         """
         Calculate actual portfolio stats based on panelframe with daily changes
         -------------
@@ -281,21 +546,44 @@ class PortfolioModels():
         - Uses daily panelframe
         Return:
         - Series with portfolio stats
+        TODO: daily returns or returns over cost_basis?
         """
-        pf = self.panelframe
+        pf = self._daily
 
-        # can choose either a total return or capital gain only
-        return_to_use = 'investment_return'
+        # capital gains `cum_investment_return` or
+        # total return `cum_total_return`
+        return_to_use = 'cum_investment_return'
 
-        cum_return_D1 = pf[return_to_use].sum(1).shift(1)
-        cum_return_D2 = pf[return_to_use].sum(1)
-        cost_basis = pf['cum_cost_basis'].sum(1)
-        returns = (cum_return_D2 - cum_return_D1) / cost_basis
+        # cum_return = pf.reset_index().pivot(
+        #     index='date',
+        #     columns='symbol',
+        #     values='cum_investment_return').sum(axis=1)
+
+        # cum_return_D1 = pf[return_to_use].sum(1).shift(1)
+        # cum_return_D2 = pf[return_to_use].sum(1)
+        # cost_basis = pf['cum_cost_basis'].sum(1)
+        # returns = (cum_return_D2 - cum_return_D1) / cost_basis
+        # returns.fillna(0, inplace=True)
+
+        # portfolio return over cost_basis
+        returns = pf.reset_index().pivot(
+            index='date',
+            columns='symbol',
+            values=return_to_use).sum(axis=1)\
+            .transform(lambda x: x-x.shift(1))/pf.reset_index().pivot(
+                index='date',
+                columns='symbol',
+                values='cum_cost_basis').sum(axis=1)
         returns.fillna(0, inplace=True)
 
-        m_D1 = pf['close', :, 'market'].shift(1)
-        m_D2 = pf['close', :, 'market']
-        market = (m_D2 - m_D1) / pf['close', :, 'market'].iloc[0]
+        # return of just 100% SPY portfolio
+        # m_D1 = pf['close', :, 'market'].shift(1)
+        # m_D2 = pf['close', :, 'market']
+        # market = (m_D2 - m_D1) / pf['close', :, 'market'].iloc[0]
+        market = pf.reset_index().pivot(
+            index='date',
+            columns='symbol',
+            values='close')['SPY'].transform(lambda x: (x-x.shift(1))/x[0])
         market.fillna(0, inplace=True)
 
         """
@@ -303,7 +591,7 @@ class PortfolioModels():
         and re-using code from pyfolio
         """
 
-        SIMPLE_STAT_FUNCS = [
+        simple_stat_funcs = [
             self._observed_period_portfolio_return,
             self._observed_period_market_return,
             emp.annual_return,
@@ -320,12 +608,12 @@ class PortfolioModels():
             emp.value_at_risk,
         ]
 
-        FACTOR_STAT_FUNCS = [
+        factor_stat_funcs = [
             emp.alpha,
             emp.beta,
         ]
 
-        STAT_FUNC_NAMES = {
+        stat_func_names = {
             '_observed_period_portfolio_return': 'Total return',
             '_observed_period_market_return': 'Market return',
             'annual_return': 'Annual return',
@@ -346,259 +634,66 @@ class PortfolioModels():
         }
 
         ptf_stats = pd.Series()
-        for stat_func in SIMPLE_STAT_FUNCS:
-            ptf_stats[STAT_FUNC_NAMES[stat_func.__name__]] = stat_func(returns)
+        for stat_func in simple_stat_funcs:
+            ptf_stats[stat_func_names[stat_func.__name__]] = stat_func(returns)
 
-        for stat_func in FACTOR_STAT_FUNCS:
+        for stat_func in factor_stat_funcs:
             res = stat_func(returns, market)
-            ptf_stats[STAT_FUNC_NAMES[stat_func.__name__]] = res
+            ptf_stats[stat_func_names[stat_func.__name__]] = res
 
         return ptf_stats
 
-    def stock_risk_analysis(self, if_risk_free_return=False):
-        """
-        Calculate risk properties for every security in the portfolio
-        using empyrical library.
-        Results are consistent with self-written routine
-        References:
-        1. p. 137 of Modern Portfolio Theory and Investment Analysis
-        edition 9
-        2. faculty.washington.edu/ezivot/econ424/portfolioTheoryMatrix.pdf
-        -------------
-        Parameters:
-        - If include risk_free_return or not
-        - Using stock prices, weight ratios and div yield
-        Return:
-        - Dataframe of properties for each security in portfolio
-        """
-
-        pf = self.panelframe
-        returns = (pf['close'] - pf['close'].shift(1))/pf['close'].iloc[0]
-        returns.fillna(0, inplace=True)
-
-        # construct resulting dataframe
-        df = pd.DataFrame({
-            'means': returns.mean(axis=0),
-        })
-
-        SIMPLE_STAT_FUNCS = [
-            emp.annual_return,
-            emp.annual_volatility,
-            emp.sharpe_ratio,
-            emp.calmar_ratio,
-            emp.stability_of_timeseries,
-            emp.max_drawdown,
-            emp.omega_ratio,
-            emp.sortino_ratio,
-            stats.skew,
-            stats.kurtosis,
-            emp.tail_ratio,
-            emp.value_at_risk,
-        ]
-
-        FACTOR_STAT_FUNCS = [
-            emp.alpha,
-            emp.beta,
-        ]
-
-        STAT_FUNC_NAMES = {
-            'annual_return': 'Annual return',
-            'cum_returns_final': 'Cumulative returns',
-            'annual_volatility': 'Annual volatility',
-            'alpha': 'Alpha',
-            'beta': 'Beta',
-            'sharpe_ratio': 'Sharpe ratio',
-            'calmar_ratio': 'Calmar ratio',
-            'stability_of_timeseries': 'Stability',
-            'max_drawdown': 'Max drawdown',
-            'omega_ratio': 'Omega ratio',
-            'sortino_ratio': 'Sortino ratio',
-            'tail_ratio': 'Tail ratio',
-            'value_at_risk': 'Daily value at risk',
-            'skew': 'Skew',
-            'kurtosis': 'Kurtosis'
-        }
-
-        for stat_func in SIMPLE_STAT_FUNCS:
-            df[STAT_FUNC_NAMES[stat_func.__name__]] =\
-                returns.apply(lambda x: stat_func(x)).apply(pd.Series)
-
-        for stat_func in FACTOR_STAT_FUNCS:
-            df[STAT_FUNC_NAMES[stat_func.__name__]] =\
-                returns.apply(lambda x: stat_func(
-                    x, returns['market'])).apply(pd.Series)
-
-        del df['means']
-
-        return df
-
-    def _risk_free_return(self, period='monthly'):
-        """
-        Risk free return based on T-bills.
-        -------------
-        Parameters:
-        - period: monthly, quarterly or annual
-        Returns:
-        - annualized value of return based on period
-        """
-        tb = pd.read_hdf(self.datafile, 'treasury_bills')
-        TBILLS_PERIODS = {
-            'yearly': 'TB1YR',
-            'monthly': 'TB4WK',
-            'quarterly': 'TB3MS'
-        }
-        return tb[TBILLS_PERIODS[period]].mean()
-
-    def _stock_monthly_returns(self):
-        """
-        Monthly returns = capital gain + dividend yields for all symbols
-        -------------
-        Parameters:
-        - none
-        Returns:
-        - dataframe with monthly returns in % by symbol
-        """
-        pf = self.panelframe
-
-        # monthly changes in stock_prices prices
-        stock_prices = pf['close']
-        stock_month_start = stock_prices.groupby([
-            lambda x: x.year,
-            lambda x: x.month]).first()
-        stock_month_end = stock_prices.groupby([
-            lambda x: x.year,
-            lambda x: x.month]).last()
-        stock_monthly_return = (stock_month_end - stock_month_start) /\
-            stock_month_start * 100
-
-        stock_monthly_div_yield = pf['dividend_yield'].groupby([
-            lambda x: x.year,
-            lambda x: x.month]).mean()
-        stock_monthly_div_yield.fillna(0, inplace=True)
-
-        return stock_monthly_return + stock_monthly_div_yield
-
-    def _ptf_monthly_returns_indirect(self):
-        """
-        monthly changes in portfolio value
-        using indirect calculation with mean ratios
-        TODO - implement a more accurate method
-        -------------
-        Parameters:
-        - none
-        - Using stock prices, portfolio weights on every day and div yield
-        Returns:
-        - dataframe with monthly returns in % by symbol
-        """
-        stock_monthly_change = self._stock_monthly_returns()
-        ptf_monthly_ratio = self.panelframe['current_weight'].groupby([
-            lambda x: x.year,
-            lambda x: x.month]).mean()
-        ptf_monthly_returns = (
-            stock_monthly_change * ptf_monthly_ratio).sum(1)
-        return ptf_monthly_returns
-
-    def _one_pfopt_case(self, cov_mat, stock_returns, market, weights, name):
-        case = {}
-        case['name'] = name
-        case['weights'] = weights
-
-        returns = np.dot(stock_returns, weights.values.reshape(-1, 1))
-        returns = pd.Series(returns.flatten(), index=market.index)
-
-        SIMPLE_STAT_FUNCS = [
-            emp.annual_return,
-            emp.annual_volatility,
-            emp.sharpe_ratio,
-            emp.stability_of_timeseries,
-            emp.max_drawdown,
-            emp.omega_ratio,
-            emp.calmar_ratio,
-            emp.sortino_ratio,
-            emp.value_at_risk,
-        ]
-
-        FACTOR_STAT_FUNCS = [
-            emp.alpha,
-            emp.beta,
-        ]
-
-        STAT_FUNC_NAMES = {
-            'annual_return': 'Annual return',
-            'annual_volatility': 'Annual volatility',
-            'alpha': 'Alpha',
-            'beta': 'Beta',
-            'sharpe_ratio': 'Sharpe ratio',
-            'calmar_ratio': 'Calmar ratio',
-            'stability_of_timeseries': 'Stability',
-            'max_drawdown': 'Max drawdown',
-            'omega_ratio': 'Omega ratio',
-            'sortino_ratio': 'Sortino ratio',
-            'value_at_risk': 'Daily value at risk',
-        }
-
-        ptf_stats = pd.Series()
-        for stat_func in SIMPLE_STAT_FUNCS:
-            ptf_stats[STAT_FUNC_NAMES[stat_func.__name__]] = stat_func(returns)
-
-        for stat_func in FACTOR_STAT_FUNCS:
-            res = stat_func(returns, market)
-            ptf_stats[STAT_FUNC_NAMES[stat_func.__name__]] = res
-
-        case['stats'] = ptf_stats
-
-        return case
-
     def markowitz_portfolios(self):
-        pf = self.panelframe
-        returns = (pf['close'] - pf['close'].shift(1))/pf['close'].shift(1)
-        returns.fillna(0, inplace=True)
-        market = returns['market']
-        returns = returns.iloc[:, :-1]
+        """
+        Estimate Markowitz portfolios
+        Inputs: daily returns by stock, avg returns by stock, cov_matrix
+        """
+        # pf = self._daily
 
-        cov_mat = np.cov(returns, rowvar=False, ddof=1)
-        cov_mat = pd.DataFrame(
-            cov_mat,
-            columns=returns.keys(),
-            index=returns.keys())
+        # returns = (pf['close'] - pf['close'].shift(1))/pf['close'].shift(1)
+        # returns.fillna(0, inplace=True)
+        # market = returns['market']
+        # returns = returns.iloc[:, :-1]
+
+        # cov_mat = np.cov(returns, rowvar=False, ddof=1)
+        # cov_mat = pd.DataFrame(
+        #     cov_mat,
+        #     columns=returns.keys(),
+        #     index=returns.keys())
+
+        # avg_rets = returns.mean(0).astype(np.float64)
+
+        # prepare inputs
+        returns = self.stocks_daily
+        market = returns['SPY']
+        returns.drop('SPY', axis=1, inplace=True)
 
         avg_rets = returns.mean(0).astype(np.float64)
+
+        cov_mat = self.stocks_covar
+        cov_mat.drop('SPY', axis=0, inplace=True)
+        cov_mat.drop('SPY', axis=1, inplace=True)
 
         mrk = []
 
         weights = pfopt.min_var_portfolio(cov_mat)
         case = self._one_pfopt_case(
-            cov_mat, returns, market, weights, 'Minimum variance portfolio')
+            returns, market, weights,
+            'Minimum variance portfolio')
         mrk.append(case)
 
         for t in [0.50, 0.75, 0.90]:
             target = avg_rets.quantile(t)
             weights = pfopt.markowitz_portfolio(cov_mat, avg_rets, target)
             case = self._one_pfopt_case(
-                cov_mat, returns, market, weights,
+                returns, market, weights,
                 'Target: more than {:.0f}% of stock returns'.format(t*100))
             mrk.append(case)
 
         weights = pfopt.tangency_portfolio(cov_mat, avg_rets)
         case = self._one_pfopt_case(
-            cov_mat, returns, market, weights, 'Tangency portfolio')
+            returns, market, weights,
+            'Tangency portfolio')
         mrk.append(case)
 
         return mrk
-
-
-if __name__ == '__main__':
-    df_ord = pd.read_hdf('../data/data.h5', 'orders')
-    df_div = pd.read_hdf('../data/data.h5', 'dividends')
-    df_open = pd.read_hdf('../data/data.h5', 'open')
-    df_closed = pd.read_hdf('../data/data.h5', 'closed')
-    pf = pd.read_hdf('../data/data.h5', 'market')
-
-    ptf = PortfolioModels('../data/data.h5')
-    pf = ptf.daily_portfolio_changes().panelframe
-
-    # this section uses only stock prices, div yields and weights
-    df_risk = ptf.stock_risk_analysis(False)
-    df_corr, df_cov = ptf.stock_correlation_matrix()
-    pf_stats = ptf.actual_portfolio_stats()
-    mrk = ptf.markowitz_portfolios()
