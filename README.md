@@ -28,10 +28,16 @@ Based on unofficial [robinhood-api](https://github.com/Jamonek/Robinhood) and se
 
 
 ### Non-Docker way
-Install dependencies, it is recommended to use virtualenv:
+Create virtual environment, install dependencies:
 ```
 git clone https://github.com/omdv/robinhood-portfolio && cd robinhood-portfolio
 virtualenv robinhood && source robinhood/bin/activate && pip3 install -r requirements.txt
+```
+
+Or using conda (my preference):
+```
+conda create -n robinhood python=3.7
+conda activate robinhood && pip install -r requirements.txt
 ```
 
 To run:
@@ -39,7 +45,7 @@ To run:
 jupyter notebook
 ```
 
-Open `main.ipynb`, enter TIINGO API KEY, Robinhood credentials, set DEMO_RUN variable to `False` to run with your data, execute all cells.
+Open `main.ipynb`, enter TIINGO `api_key`, Robinhood credentials, set `demo_run` variable to `False` to run with your data, execute all cells.
 
 
 <!-- ### Docker way
