@@ -1,17 +1,11 @@
-FROM phusion/baseimage:latest
-MAINTAINER Oleg Medvedev <ole.bjorne@gmail.com>
-ARG VERSION=unknown
+FROM jupyter/base-notebook:latest
+MAINTAINER Oleg Medvedev <omdv.public@gmail.com>
 
-RUN apt-get update && \
-    apt-get install -y \
-    python3 python3-numpy python3-nose python3-pandas \
-    pep8 python3-pip python3-matplotlib git && \
-    pip3 install --upgrade setuptools
+USER root
 
-RUN mkdir -p /root/.config/matplotlib && \
-	echo backend:Agg > /root/.config/matplotlib/matplotlibrc
+RUN apt-get update && apt-get install -y git
 
-RUN VERSION=${VERSION} git clone https://github.com/omdv/robinhood-portfolio && \
-	pip3 install --upgrade --force-reinstall -r robinhood-portfolio/requirements.txt
+RUN git clone https://github.com/omdv/robinhood-portfolio ./work && \
+	pip3 install --upgrade --force-reinstall -r work/requirements.txt
 
-CMD cd robinhood-portfolio && python3 app.py
+USER $NB_USER
