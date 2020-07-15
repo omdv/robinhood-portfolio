@@ -17,6 +17,8 @@ Based on unofficial [robinhood-api](https://github.com/Jamonek/Robinhood) and se
 - Calculates the risk metric for individual securities and correlations between securities
 - Calculates Markowitz portfolios
 
+[LINK to Jupyter Notebook demo](https://github.com/omdv/robinhood-portfolio/blob/master/main.ipynb)
+
 ## Screenshots (OLD FLASK APP)
 ![Image1](https://github.com/omdv/robinhood-portfolio/blob/master/docs/image_1.png)
 ![Image2](https://github.com/omdv/robinhood-portfolio/blob/master/docs/image_2.png)
