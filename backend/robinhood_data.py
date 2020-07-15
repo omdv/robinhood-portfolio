@@ -244,5 +244,6 @@ class RobinhoodData:
         dividends['payable_date'] = pd.Timestamp('2019-01-02', tz='UTC')
         return dividends
 
+
 if __name__ == "__main__":
     pass

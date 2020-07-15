@@ -146,7 +146,6 @@ class PortfolioModels():
         # merge orders with market
         pf = self._merge_market_with_orders(df, market)
 
-
         df = pd.read_pickle(self.datafolder + "/dividends.pkl")
 
         # calculate cumulative dividends
@@ -155,9 +154,8 @@ class PortfolioModels():
         # merge orders with market
         pf = self._merge_market_with_dividends(df, pf)
 
-        
-        #replace null stock prices using backfill to avoid issues with
-        #daily_change and beta calculations
+        # replace null stock prices using backfill to avoid issues with
+        # daily_change and beta calculations
         close_price = pf['close']
         close_price.values[close_price.values == 0] = np.nan
         close_price.fillna(method='bfill', inplace=True)

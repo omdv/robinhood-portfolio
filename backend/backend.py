@@ -11,10 +11,10 @@ class BackendClass(object):
     Backend wrapper class, provides wrappers to donwload robinhood and market
     data, provides access to portfolio models. Mostly deals with UI logic.
     --------
-    datafile: path to hdf datafile
+    datadir: path to data directory
     """
-    def __init__(self, datafile, userfile):
-        self.datafile = datafile
+    def __init__(self, datadir, userfile):
+        self.datadir = datadir
         self.userfile = userfile
         self.df_returns = None
         self.daily_returns = None
@@ -26,9 +26,9 @@ class BackendClass(object):
         self._date_fmt = '{:%d-%m-%Y}'
 
         # read dataframe
-        self._df_ord = pd.read_hdf(datafile, 'orders')
-        self._df_div = pd.read_hdf(datafile, 'dividends')
-        self._market = pd.read_hdf(datafile, 'market')
+        self._df_ord = pd.read_pickle(self.datadir+'orders.pkl')
+        self._df_div = pd.read_pickle(self.datadir+'dividends.pkl')
+        self._market = pd.read_pickle(self.datadir+'market.pkl')
 
         # handle user dictionary
         self._init_user_dict()
@@ -89,7 +89,7 @@ class BackendClass(object):
         user dict to download the entire history from scratch, otherwise
         download only new dates in addition to the existing set
         """
-        md = MarketData(self.datafile)
+        md = MarketData(self.datadir)
 
         # check if symbols match
         s1 = list(self._df_ord.symbol.unique())
@@ -116,7 +116,7 @@ class BackendClass(object):
         return self
 
     def update_robinhood_data(self, user, password):
-        rd = RobinhoodData(self.datafile)
+        rd = RobinhoodData(self.datadir)
         self._df_div, self._df_ord, _, _ =\
             rd.download_robinhood_data(user, password)
         self.user['rb_dates'] = [
@@ -137,7 +137,7 @@ class BackendClass(object):
         """
         Generate a panelframe with daily portfolio changes
         """
-        self._ptfm = PortfolioModels(self.datafile)
+        self._ptfm = PortfolioModels(self.datadir)
         self._panel = self._ptfm.daily_portfolio_changes().panelframe
         return self
 
@@ -189,7 +189,7 @@ class BackendClass(object):
         """
         Get three best/worst closed positions by realized gains
         """
-        df = pd.read_hdf(self.datafile, 'closed')
+        df = pd.read_pickle(self.datadir, 'closed')
         df1 = df.nlargest(min(3, df.shape[0]), 'realized_gains')
         df2 = df.nsmallest(min(3, df.shape[0]), 'realized_gains')
         df = pd.concat([df1, df2]).sort_values(by='realized_gains')
@@ -237,7 +237,7 @@ class BackendClass(object):
         """
         market_prices = self._panel['close'].iloc[-1]
 
-        df = pd.read_hdf(self.datafile, 'open')
+        df = pd.read_pickle(self.datadir, 'open')
         df['current_price'] =\
             df.apply(lambda x: market_prices[x.symbol], axis=1)
         df['unrealized_gains'] =\
@@ -284,8 +284,8 @@ class BackendClass(object):
         return self
 
     def _get_all_orders(self):
-        cl = pd.read_hdf(self.datafile, 'closed')
-        op = pd.read_hdf(self.datafile, 'open')
+        cl = pd.read_pickle(self.datadir, 'closed')
+        op = pd.read_pickle(self.datadir, 'open')
         mkt = self._panel['close'].iloc[-1]
 
         cl['average_buy_price'] = cl['current_cost_basis'] / cl['signed_size']
@@ -483,5 +483,5 @@ class BackendClass(object):
 
 
 if __name__ == '__main__':
-    bc = BackendClass('../data/data.h5')
+    bc = BackendClass('data/data.h5', 'user.pkl')
     bc = bc.calculate_all()

@@ -3,6 +3,7 @@ Market reader module
 """
 import pandas_datareader.data as web
 
+
 def download_save_market_data(api_key, symbols, start_date, end_date):
     """
     Return market data
