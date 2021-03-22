@@ -211,7 +211,7 @@ class RobinhoodData:
         orders = pd.DataFrame(index=range(11))
         orders['created_at'] = pd.Timestamp('2018-01-02', tz='UTC')
         orders['date'] = pd.Timestamp('2018-01-02', tz='UTC')
-        orders['symbol'] = ['MSFT', 'AAPL', 'CVX', 'XOM', 'BND', 'CAT', 'BA', 'BAC', 'JPM', 'MSFT']
+        orders['symbol'] = ['MSFT', 'AAPL', 'CVX', 'XOM', 'BND', 'CAT', 'BA', 'TIF', 'BAC', 'JPM', 'MSFT']
         orders['current_size'] = 100
         orders['signed_size'] = 100
         orders['average_price'] = 100.0
