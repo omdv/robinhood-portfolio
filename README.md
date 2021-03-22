@@ -1,3 +1,6 @@
+# DEPRECATION NOTICE
+This app is deprecated. I switched to different broker in 2017. I tried to maintain this repo, but it is becoming increasingly difficult mostly due to lack of interest. Many parts of this repo should be viable as long as the Robinhood API stays the same.
+
 # Note
 This app is relying on [pandas-datareader](https://pydata.github.io/pandas-datareader/stable/remote_data.html#) for stock historical prices. Over the last couple years multiple APIs were obsoleted by their providers (Google Finance, Morningstar) and as I am no longer a RH client I have no time to keep up with those changes. If you encounter the "Bad Gateway" error or similar it is likely that the current market data source is no longer valid. You are welcome to fork and try different sources of quotes - I will try to fix it, when/if I have time.
 

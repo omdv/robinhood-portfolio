@@ -211,14 +211,14 @@ class RobinhoodData:
         orders = pd.DataFrame(index=range(11))
         orders['created_at'] = pd.Timestamp('2018-01-02', tz='UTC')
         orders['date'] = pd.Timestamp('2018-01-02', tz='UTC')
-        orders['symbol'] = ['MSFT', 'AAPL', 'CVX', 'XOM', 'BND', 'CAT', 'BA', 'TIF', 'BAC', 'JPM', 'MSFT']
+        orders['symbol'] = ['MSFT', 'AAPL', 'CVX', 'XOM', 'BND', 'CAT', 'BA', 'BAC', 'JPM', 'MSFT']
         orders['current_size'] = 100
         orders['signed_size'] = 100
         orders['average_price'] = 100.0
         orders['fees'] = 0
         orders['cumulative_quantity'] = 100
         orders['side'] = 'buy'
-        orders.to_pickle('data/orders.pkl')
+        orders.to_pickle(self.datafolder + 'orders.pkl')
 
         # one sell order
         orders.loc[10, 'side'] = 'sell'
